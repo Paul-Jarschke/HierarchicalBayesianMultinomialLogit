@@ -155,8 +155,9 @@ def run_bayesm_gibbs_inference_mixture_hbmnl(
         data_dict: dict,
         K: int,                      # ── REQUIRED: K_MODEL, for correct reporting
         chains: int = 1,
-        warmup: int = 1000,
-        posterior: int = 5000,
+        r_total: int = 42000,        # total raw Gibbs sweeps (bayesm Mcmc$R)
+        burn_in: int = 2000,         # raw sweeps discarded before thinning
+        thin: int = 4,               # keep every `thin`-th raw draw after burn-in
         seed: int = 123,
         s: float | None = None,      # RW scale; bayesm default 2.93/sqrt(n_params)
         w: float = 0.1):             # fractional-likelihood weight (bayesm default)
@@ -169,6 +170,18 @@ def run_bayesm_gibbs_inference_mixture_hbmnl(
     the prior hyperparameters are read from model.bayesm_prior so the conjugate
     updates provably match the model's prior.
 
+    Iteration scheme matches run_single_bayesm_experiment.R exactly. bayesm is
+    called with keep=1 there (every raw draw returned), then burn_in is dropped
+    and the remainder thinned by `thin`, both in RAW iteration units - see the
+    comment above `keep_idx` in that script for why this order (not thinning
+    first) is deliberate. This runner reproduces that: the Goose posterior epoch
+    runs UNTHINNED for (r_total - burn_in) raw sweeps (warmup_duration=burn_in
+    discards the first burn_in sweeps exactly as bayesm's manual burn-in slice
+    does), and the thinning is applied afterward with a plain Python stride.
+    Posterior sample index j (0-indexed) is raw sweep (burn_in + 1 + j), so
+    `[:, ::thin]` keeps j = 0, thin, 2*thin, ... - the same phase as R's
+    `seq(burn_in + 1, r_total, by = thin)`.
+
     Parameters
     ----------
     model     : compiled liesel Model from build_bayesm_mixture_hbmnl_model.
@@ -176,17 +189,23 @@ def run_bayesm_gibbs_inference_mixture_hbmnl(
     K         : number of model components (K_MODEL), for logging only.
     chains    : number of MCMC chains (bayesm itself is single-chain; multiple
                 chains differ by RNG stream, as in the R seed-loop convention).
-    warmup    : warmup iterations (no adaptation happens; Goose needs >= ~150).
-    posterior : posterior iterations.
+    r_total   : total raw Gibbs sweeps per chain (bayesm default 42000).
+    burn_in   : raw sweeps burned via Goose's warmup epoch (bayesm default 2000).
+    thin      : post-burn-in thinning interval (bayesm default 4).
     seed      : RNG seed.
     s         : RW-Metropolis scaling; None -> bayesm default 2.93/sqrt(n_params).
     w         : fractional-likelihood weight for candidate-density tuning.
 
     Returns
     -------
-    (results, posterior_samples) from the Goose engine. posterior_samples
-    additionally contains the allocation draws "ind" (chains, draws, n_units).
+    (results, posterior_samples). `results` is the raw Goose SamplingResults,
+    holding all (r_total - burn_in) UNTHINNED posterior sweeps (mirrors what
+    NUTS/HMC's mcmc_results.pkl holds). `posterior_samples` is the THINNED dict
+    - shape (chains, (r_total-burn_in)//thin, ...) - matching what bayesm's own
+    posterior_raw.pkl contains; it additionally has the allocation draws "ind".
     """
+    if burn_in >= r_total:
+        raise ValueError(f"burn_in ({burn_in}) must be < r_total ({r_total}).")
     prior = getattr(model, "bayesm_prior", None)
     if prior is None:
         raise ValueError(
@@ -225,7 +244,7 @@ def run_bayesm_gibbs_inference_mixture_hbmnl(
     print(f" - RW scale s: {s:.4f} | fractional weight w: {w}")
     print(f" - Prior: nu={nu:.0f}, V=nu*I, a_mu={a_mu}, A_delta={A_delta}, "
           f"dirichlet_a={float(prior['dirichlet_a'])}")
-    print(f" - Chains: {chains} | Warmup: {warmup} | Posterior: {posterior}")
+    print(f" - Chains: {chains} | R_total: {r_total} | burn_in: {burn_in} | thin: {thin}")
 
     print(f"Initializing Metropolis candidate densities for {n_units} units ...")
     t0 = time.time()
@@ -381,18 +400,33 @@ def run_bayesm_gibbs_inference_mixture_hbmnl(
         eb.add_kernel(gs.GibbsKernel(["Delta"], draw_delta))
     eb.add_kernel(gs.GibbsKernel(["beta_i"], draw_beta))
 
-    eb.set_duration(warmup_duration=warmup, posterior_duration=posterior)
+    # warmup_duration burns the first `burn_in` raw sweeps (bayesm's manual
+    # burn-in slice); the posterior epoch runs UNTHINNED for the remaining
+    # sweeps - matching bayesm being called with keep=1 - and is thinned
+    # afterward in Python (see docstring for the exact index correspondence).
+    eb.set_duration(warmup_duration=burn_in, posterior_duration=r_total - burn_in)
 
     engine = eb.build()
     engine.sample_all_epochs()
 
     results = engine.get_results()
-    posterior_samples = results.get_posterior_samples()
+    posterior_samples_raw = results.get_posterior_samples()
 
-    acc = beta_acceptance_rates(posterior_samples)
-    print(f"RW-Metropolis acceptance (beta_i): mean {acc.mean():.3f} | "
+    # Acceptance must be measured on the UNTHINNED chain: between two draws
+    # `thin` sweeps apart, beta_i has almost certainly moved at least once,
+    # which would make the thinned chain read as ~100% acceptance regardless
+    # of the true per-sweep rate.
+    acc = beta_acceptance_rates(posterior_samples_raw)
+    print(f"RW-Metropolis acceptance (beta_i, per raw sweep): mean {acc.mean():.3f} | "
           f"min {acc.min():.3f} | max {acc.max():.3f} "
           f"(bayesm-typical range ~0.15-0.5)")
+
+    posterior_samples = {
+        key: np.asarray(val)[:, ::thin] for key, val in posterior_samples_raw.items()
+    }
+    n_kept = next(iter(posterior_samples.values())).shape[1]
+    print(f"Retained {n_kept} draws/chain from {r_total} raw sweeps "
+          f"({burn_in} burned + {r_total - burn_in} sampled, thinned by {thin}).")
 
     return results, posterior_samples
 
