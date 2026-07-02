@@ -60,10 +60,27 @@ except Exception:
 CHAINS_GRID  = [1, 2, 4]
 SAMPLER_GRID = ["hmc", "nuts"]          # add "iwls" later maybe
 
-# Chain lenghts (edit to taste)
+# Folder name per sampler inside <k>_comp/. "bayesm_gibbs" is the Liesel
+# replication of bayesm's own sampler, so its runs live in "replication"
+# beside NUTS / HMC / bayesm.
+SAMPLER_FOLDER = {
+    "hmc":          "HMC",
+    "nuts":         "NUTS",
+    "iwls":         "IWLS",
+    "bayesm_gibbs": "replication",
+}
+
+# Chain lenghts (edit to taste) — for nuts/hmc/iwls
 WARMUP    = 2000
 POSTERIOR = 10000
 SEED      = 42
+
+# bayesm_gibbs iteration scheme — matches run_all_bayesm_experiments.py's R-side
+# bayesm run exactly: R_TOTAL raw sweeps, BURN_IN discarded, THIN applied after.
+# (42000 - 2000) / 4 = 10000 retained draws, same as the Liesel NUTS/HMC chains.
+R_TOTAL = 42000
+BURN_IN = 2000
+THIN    = 4
 
 # Priors
 A_DELTA     = 0.01
@@ -87,15 +104,19 @@ def chains_label(chains: int) -> str:
     return "1_chain" if chains == 1 else f"{chains}_chains"
 
 
-def build_grid(strategy: str):
+def build_grid(strategy: str, samplers: list[str] | None = None,
+               chains_grid: list[int] | None = None):
     """Return a list of experiment dicts."""
+    samplers = samplers if samplers is not None else SAMPLER_GRID
+    chains_grid = chains_grid if chains_grid is not None else CHAINS_GRID
     grid = []
-    for chains in CHAINS_GRID:
+    for chains in chains_grid:
         for scenario, k_true in SCENARIOS:
-            for sampler in SAMPLER_GRID:
+            for sampler in samplers:
                 k_model = resolve_k_model(k_true, strategy)
+                folder = SAMPLER_FOLDER.get(sampler, sampler.upper())
                 outdir = (RESULTS_ROOT / chains_label(chains) / f"{k_true}_comp"
-                          / sampler.upper() / f"{scenario}_K{k_model}_seed{SEED}"
+                          / folder / f"{scenario}_K{k_model}_seed{SEED}"
                           / "results")
                 grid.append({
                     "scenario": scenario, "k_true": k_true, "k_model": k_model,
@@ -107,7 +128,8 @@ def build_grid(strategy: str):
     # the scenario/sampler order within each chain count.
     _SAMPLER_ORDER = {"hmc": 0,
                       "nuts": 1,
-                      "iwls": 2}
+                      "iwls": 2,
+                      "bayesm_gibbs": 3}
     grid.sort(key=lambda e: (_SAMPLER_ORDER[e["sampler"]], e["chains"]))
     return grid
 
@@ -131,14 +153,18 @@ def run_one(exp: dict, log_path: pathlib.Path) -> tuple[str, float]:
         "--k-model", str(exp["k_model"]),
         "--sampler", exp["sampler"],
         "--chains", str(exp["chains"]),
-        "--warmup", str(WARMUP),
-        "--posterior", str(POSTERIOR),
         "--seed", str(SEED),
         "--a-delta", str(A_DELTA),
         "--a-mu", str(A_MU),
         "--dirichlet-a", str(DIRICHLET_A),
         "--outdir", str(exp["outdir"]),
     ]
+    if exp["sampler"] == "bayesm_gibbs":
+        # Iteration scheme matched to the real bayesm run (run_all_bayesm_experiments.py):
+        # R_TOTAL raw sweeps, BURN_IN discarded, THIN applied after burn-in.
+        cmd += ["--r-total", str(R_TOTAL), "--burn-in", str(BURN_IN), "--thin", str(THIN)]
+    else:
+        cmd += ["--warmup", str(WARMUP), "--posterior", str(POSTERIOR)]
     env = dict(os.environ, PYTHONUNBUFFERED="1")
     t0 = time.time()
     with open(log_path, "w") as logf:
@@ -157,11 +183,31 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--strategy", choices=["fixed5", "known"], default="fixed5",
                     help="fixed5: fit K_MODEL=5 everywhere; known: fit K_MODEL=K_TRUE")
+    ap.add_argument("--samplers", default=",".join(SAMPLER_GRID),
+                    help="Comma-separated sampler list "
+                         "(nuts,hmc,iwls,bayesm_gibbs). Default: current grid.")
+    ap.add_argument("--chains", default=",".join(str(c) for c in CHAINS_GRID),
+                    help="Comma-separated chain counts to run, e.g. '1,2'. "
+                         "Default: current grid (1,2,4). Use this to exclude 4 "
+                         "explicitly rather than relying on --force/skip logic.")
     ap.add_argument("--force", action="store_true", help="Re-run even completed experiments.")
     ap.add_argument("--dry-run", action="store_true", help="Print the plan and exit.")
     args = ap.parse_args()
 
-    grid = build_grid(args.strategy)
+    samplers = [s.strip() for s in args.samplers.split(",") if s.strip()]
+    valid = {"nuts", "hmc", "iwls", "bayesm_gibbs"}
+    unknown = set(samplers) - valid
+    if unknown:
+        ap.error(f"Unknown sampler(s): {sorted(unknown)}; valid: {sorted(valid)}")
+
+    try:
+        chains_grid = [int(c.strip()) for c in args.chains.split(",") if c.strip()]
+    except ValueError:
+        ap.error(f"--chains must be a comma-separated list of integers, got: {args.chains!r}")
+    if not chains_grid:
+        ap.error("--chains resolved to an empty list.")
+
+    grid = build_grid(args.strategy, samplers, chains_grid)
     LOG_DIR.mkdir(parents=True, exist_ok=True)
     stamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     master_log = LOG_DIR / f"batch_{stamp}.log"

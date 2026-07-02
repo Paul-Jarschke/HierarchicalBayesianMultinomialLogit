@@ -113,6 +113,13 @@ def parse_args():
                     help="bayesm_gibbs: RW scale (default 2.93/sqrt(n_params)).")
     ap.add_argument("--frac-w", type=float, default=0.1,
                     help="bayesm_gibbs: fractional-likelihood weight w.")
+    ap.add_argument("--r-total", type=int, default=42000,
+                    help="bayesm_gibbs: total raw Gibbs sweeps "
+                         "(matches bayesm Mcmc$R via run_single_bayesm_experiment.R).")
+    ap.add_argument("--burn-in", type=int, default=2000,
+                    help="bayesm_gibbs: raw sweeps discarded before thinning.")
+    ap.add_argument("--thin", type=int, default=4,
+                    help="bayesm_gibbs: keep every --thin-th raw draw after burn-in.")
     ap.add_argument("--no-save-raw", action="store_true")
     ap.add_argument("--no-save-results", action="store_true",
                     help="Skip pickling the full mcmc_results object.")
@@ -200,7 +207,10 @@ def main():
             hlog(f"rw_s / frac_w      : "
                  f"{args.rw_s if args.rw_s is not None else 'auto (2.93/sqrt(P))'}"
                  f" / {args.frac_w}")
-        hlog(f"chains/warmup/post : {args.chains} / {args.warmup} / {args.posterior}")
+            hlog(f"chains/R/burn/thin : "
+                 f"{args.chains} / {args.r_total} / {args.burn_in} / {args.thin}")
+        else:
+            hlog(f"chains/warmup/post : {args.chains} / {args.warmup} / {args.posterior}")
         hlog(f"kernel -> param    : {kmap}")
         hlog("=" * 60)
 
@@ -244,8 +254,8 @@ def main():
             from src.inference.bayesm_gibbs import run_bayesm_gibbs_inference_mixture_hbmnl
             mcmc_results, posterior_samples = run_bayesm_gibbs_inference_mixture_hbmnl(
                 model=model, data_dict=choice_data, K=args.k_model,
-                chains=args.chains, warmup=args.warmup,
-                posterior=args.posterior, seed=args.seed,
+                chains=args.chains, r_total=args.r_total,
+                burn_in=args.burn_in, thin=args.thin, seed=args.seed,
                 s=args.rw_s, w=args.frac_w,
             )
         else:
@@ -295,16 +305,29 @@ def main():
         hlog("-" * 60)
         hlog(f"DONE in {datetime.timedelta(seconds=int(duration))}")
 
+        if args.sampler == "bayesm_gibbs":
+            # mirrors run_single_bayesm_experiment.py's meta.json fields exactly,
+            # so both bayesm arms are comparable: warmup<-burn_in, posterior<-
+            # retained draws/chain (ground-truthed from the actual output shape).
+            n_samples = int(next(iter(posterior_samples.values())).shape[1])
+            meta_warmup, meta_posterior = args.burn_in, n_samples
+        else:
+            meta_warmup, meta_posterior = args.warmup, args.posterior
+
         meta = {
             "scenario": args.scenario, "data_path": str(data_path),
             "k_model": args.k_model, "k_true": K_TRUE,
             "n_params": P, "n_units": choice_data["n_units"], "n_demos": choice_data["n_demos"],
             "sampler": args.sampler, "chains": args.chains,
-            "warmup": args.warmup, "posterior": args.posterior, "seed": args.seed,
+            "warmup": meta_warmup, "posterior": meta_posterior, "seed": args.seed,
             "a_delta": args.a_delta, "a_mu": args.a_mu, "dirichlet_a": args.dirichlet_a,
             "num_integration_steps": args.num_integration_steps if args.sampler == "hmc" else None,
             "rw_s": args.rw_s if args.sampler == "bayesm_gibbs" else None,
             "frac_w": args.frac_w if args.sampler == "bayesm_gibbs" else None,
+            "r_total": args.r_total if args.sampler == "bayesm_gibbs" else None,
+            "burn_in": args.burn_in if args.sampler == "bayesm_gibbs" else None,
+            "thin": args.thin if args.sampler == "bayesm_gibbs" else None,
+            "n_samples": n_samples if args.sampler == "bayesm_gibbs" else None,
             "kernel_map": kmap,
             "sampling_errors": sampling_errors,
             "started_at": started_at, "duration_s": round(duration, 1),
