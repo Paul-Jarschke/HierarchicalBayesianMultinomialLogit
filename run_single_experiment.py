@@ -50,12 +50,16 @@ def _to_numpy(obj):
     return np.asarray(obj)
 
 
-def kernel_block_map(has_Z: bool) -> dict:
+def kernel_block_map(has_Z: bool, sampler: str = "nuts") -> dict:
     """
     Map Goose's kernel_NN labels to parameter names, using the block order that
-    nuts.py / hmc.py / iwls.py register kernels in. Lets 'kernel_02' read as 'mu_k'.
+    the respective runner registers kernels in. Lets 'kernel_02' read as 'mu_k'.
     """
-    blocks = ["pvec_latent", "sigma_inv_chol_k_latent", "mu_k"]
+    if sampler == "bayesm_gibbs":
+        # bayesm sweep order (see src/inference/bayesm_gibbs.py)
+        blocks = ["comps(mu_k+sigma_inv_chol_k_latent)", "ind", "pvec_latent"]
+    else:
+        blocks = ["pvec_latent", "sigma_inv_chol_k_latent", "mu_k"]
     if has_Z:
         blocks.append("Delta")
     blocks.append("beta_i")
@@ -94,7 +98,8 @@ def parse_args():
     ap = argparse.ArgumentParser(description="Run one mixture-HBMNL experiment.")
     ap.add_argument("--scenario", required=True)
     ap.add_argument("--k-model", type=int, required=True)
-    ap.add_argument("--sampler", required=True, choices=["nuts", "hmc", "iwls"])
+    ap.add_argument("--sampler", required=True,
+                    choices=["nuts", "hmc", "iwls", "bayesm_gibbs"])
     ap.add_argument("--chains", type=int, default=1)
     ap.add_argument("--warmup", type=int, default=2000)
     ap.add_argument("--posterior", type=int, default=10000)
@@ -104,6 +109,10 @@ def parse_args():
     ap.add_argument("--a-mu", type=float, default=0.01)
     ap.add_argument("--dirichlet-a", type=float, default=1.0)
     ap.add_argument("--num-integration-steps", type=int, default=10)
+    ap.add_argument("--rw-s", type=float, default=None,
+                    help="bayesm_gibbs: RW scale (default 2.93/sqrt(n_params)).")
+    ap.add_argument("--frac-w", type=float, default=0.1,
+                    help="bayesm_gibbs: fractional-likelihood weight w.")
     ap.add_argument("--no-save-raw", action="store_true")
     ap.add_argument("--no-save-results", action="store_true",
                     help="Skip pickling the full mcmc_results object.")
@@ -169,7 +178,7 @@ def main():
             "n_demos":  int(raw.get("n_demos", 0)),
         }
         has_Z = choice_data["Z"] is not None
-        kmap = kernel_block_map(has_Z)
+        kmap = kernel_block_map(has_Z, args.sampler)
 
         # ── Headline block (mirrors the notebook's print cells) ────────────
         hlog("=" * 60)
@@ -187,14 +196,26 @@ def main():
         hlog(f"dirichlet_a        : {args.dirichlet_a}  | a_mu: {args.a_mu} | A_delta: {args.a_delta}")
         if args.sampler == "hmc":
             hlog(f"integration steps  : {args.num_integration_steps}")
+        if args.sampler == "bayesm_gibbs":
+            hlog(f"rw_s / frac_w      : "
+                 f"{args.rw_s if args.rw_s is not None else 'auto (2.93/sqrt(P))'}"
+                 f" / {args.frac_w}")
         hlog(f"chains/warmup/post : {args.chains} / {args.warmup} / {args.posterior}")
         hlog(f"kernel -> param    : {kmap}")
         hlog("=" * 60)
 
-        model = build_mixture_hbmnl_model(
-            data_dict=choice_data, K=args.k_model,
-            A_delta=args.a_delta, a_mu=args.a_mu, dirichlet_a=args.dirichlet_a,
-        )
+        if args.sampler == "bayesm_gibbs":
+            # augmented parameterisation with explicit allocations (ind)
+            from src.bayesm_mixture_model import build_bayesm_mixture_hbmnl_model
+            model = build_bayesm_mixture_hbmnl_model(
+                data_dict=choice_data, K=args.k_model,
+                A_delta=args.a_delta, a_mu=args.a_mu, dirichlet_a=args.dirichlet_a,
+            )
+        else:
+            model = build_mixture_hbmnl_model(
+                data_dict=choice_data, K=args.k_model,
+                A_delta=args.a_delta, a_mu=args.a_mu, dirichlet_a=args.dirichlet_a,
+            )
 
         # ── Dispatch sampler ───────────────────────────────────────────────
         if args.sampler == "nuts":
@@ -218,6 +239,14 @@ def main():
                 model=model, data_dict=choice_data, K=args.k_model,
                 chains=args.chains, warmup=args.warmup,
                 posterior=args.posterior, seed=args.seed,
+            )
+        elif args.sampler == "bayesm_gibbs":
+            from src.inference.bayesm_gibbs import run_bayesm_gibbs_inference_mixture_hbmnl
+            mcmc_results, posterior_samples = run_bayesm_gibbs_inference_mixture_hbmnl(
+                model=model, data_dict=choice_data, K=args.k_model,
+                chains=args.chains, warmup=args.warmup,
+                posterior=args.posterior, seed=args.seed,
+                s=args.rw_s, w=args.frac_w,
             )
         else:
             raise ValueError(f"Unknown sampler: {args.sampler}")
@@ -274,6 +303,8 @@ def main():
             "warmup": args.warmup, "posterior": args.posterior, "seed": args.seed,
             "a_delta": args.a_delta, "a_mu": args.a_mu, "dirichlet_a": args.dirichlet_a,
             "num_integration_steps": args.num_integration_steps if args.sampler == "hmc" else None,
+            "rw_s": args.rw_s if args.sampler == "bayesm_gibbs" else None,
+            "frac_w": args.frac_w if args.sampler == "bayesm_gibbs" else None,
             "kernel_map": kmap,
             "sampling_errors": sampling_errors,
             "started_at": started_at, "duration_s": round(duration, 1),
