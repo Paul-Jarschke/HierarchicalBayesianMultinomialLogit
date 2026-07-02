@@ -1,0 +1,9 @@
+# Automatically generated content
+library/
+local/
+cellar/
+lock/
+python/
+sandbox/
+staging/
+
