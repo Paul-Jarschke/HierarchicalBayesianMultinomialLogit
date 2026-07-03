@@ -7,19 +7,19 @@ bayesm runs that sit side by side there against each other and the true DGP, on
 LABEL-INVARIANT quantities only - so no relabeling is needed (a per-draw
 permutation of the component triples leaves every quantity here unchanged).
 
-Corrections over the earlier prototype
---------------------------------------
+Methodology
+-----------
 1. Grids are anchored to the FITTED models' own support (union over samplers,
    wide), NOT to the true DGP +/-4 sigma - the latter clips the tails/lobes Rossi
-   highlights and is circular. Truth is an overlay only.
+   highlights and would be circular. Truth is an overlay only.
 2. Convergence is assessed with arviz `rhat`/`ess` on the REAL (chains, draws)
    invariant series (rank-normalised split-R-hat across actual chains), not by
    splitting a single flattened chain into pseudo-chains.
 3. The density-support mask uses the INVARIANT marginal (per-draw then average),
    never slot-wise posterior means (which mix components under label switching).
 
-The marginal density (Eq. 5.5.19) and mixture moments (Eq. 5.5.2) themselves are
-unchanged from the validated prototype.
+The marginal density (Eq. 5.5.19) and mixture moments (Eq. 5.5.2) follow Rossi
+2006 directly.
 
 References
 ----------

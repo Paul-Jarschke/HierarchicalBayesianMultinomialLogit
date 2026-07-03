@@ -46,15 +46,12 @@ _FILL_TRIL = tfb.FillScaleTriL()
 
 def set_multichain_initial_values(eb, stacked_state):
     """
-    Work around a bug in the installed Goose (liesel==0.4.1):
-    EngineBuilder.set_initial_values(state, multiple_chains=True) leaves its
-    local `model_states` unbound (the `if not multiple_chains:` branch never
-    assigns it), so `self._model_state = Option(model_states)` raises
-    UnboundLocalError (liesel/goose/builder.py:253-256). This reproduces
-    exactly what that branch's own docstring promises instead ("If
-    multiple_chains is true the model_state will be used as is"), using the
-    same Option wrapper Goose itself uses internally - not a private-API
-    invention, just the missing line.
+    Set a per-chain-distinct initial state on an EngineBuilder.
+
+    EngineBuilder.set_initial_values(state, multiple_chains=True) is not usable
+    for this in the installed Goose (liesel==0.4.1): that code path never
+    assigns self._model_state. This sets it directly via the same Option
+    wrapper Goose uses internally (liesel/goose/builder.py).
     """
     eb._model_state = Option(stacked_state)
 
