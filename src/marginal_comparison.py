@@ -43,6 +43,7 @@ import pathlib
 
 import numpy as np
 import pandas as pd
+import xarray as xr
 import arviz as az
 from scipy.stats import norm, wasserstein_distance
 
@@ -236,13 +237,18 @@ def density_distances(d_model, d_true, x):
     return {"Hellinger": hell, "KL": kl, "JSD": jsd, "TVD": tvd, "Wasserstein1": w1}
 
 
-def distance_table(models, true_model, grids, param_names):
+def distance_table(models, true_model, grids, param_names, dens=None, dens_true=None):
     """Distance of every sampler's marginal to the TRUE DGP marginal, per parameter.
-    Samplers are never compared against each other. KL is KL(model || true)."""
-    d_true = marginal_density(true_model, grids)
+    Samplers are never compared against each other. KL is KL(model || true).
+
+    `dens` (dict: model name -> marginal_density(...)) and `dens_true` may be passed
+    in to reuse densities already computed elsewhere for this (models, grids) pair
+    instead of recomputing them here - the O(R*K*n_grid) cost of `marginal_density`
+    otherwise gets paid again on every call site."""
+    d_true = dens_true if dens_true is not None else marginal_density(true_model, grids)
     rows = []
     for m in models:
-        d = marginal_density(m, grids)
+        d = dens[m["name"]] if dens is not None else marginal_density(m, grids)
         for j, pj in enumerate(param_names):
             dist = density_distances(d[j], d_true[j], grids[j])
             rows.append({"sampler": m["name"], "param": pj,
@@ -273,26 +279,45 @@ def _ess(series):
     return float(az.ess(_as_chains(series)))
 
 
-def density_series_diagnostics(model, grids, param_names, n_eval=40, density_threshold=0.01):
+def _rhat_ess_batch(series):
+    """Vectorized R-hat and ESS over a trailing 'point' dim: series is (C,S,n_points).
+    One az.rhat/az.ess call each (via xarray, which vectorizes elementwise over extra
+    dims) instead of one call per point - arviz pays a fixed ~0.2-0.3s per-call setup
+    cost regardless of data size, so looping az.rhat/az.ess per point (as
+    density_series_diagnostics used to) was the dominant runtime cost, not the
+    marginal-density grid resolution. Returns (rhat (n_points,), ess (n_points,))."""
+    chains = _as_chains(series)                                  # (C',S,n_points)
+    ds = xr.Dataset({"x": xr.DataArray(chains, dims=("chain", "draw", "point"))})
+    return az.rhat(ds)["x"].values, az.ess(ds)["x"].values
+
+
+def density_series_diagnostics(model, grids, param_names, n_eval=40, density_threshold=0.01, marg=None):
     """ESS / R-hat of the per-draw marginal density f_{c,s}(x) at a grid of x,
     restricted to the high-density region. The mask uses the INVARIANT marginal,
-    not slot-wise means. R-hat/ESS via arviz on the real (C,S) chains."""
+    not slot-wise means. R-hat/ESS via arviz on the real (C,S) chains, batched
+    across all surviving grid points in one call (see `_rhat_ess_batch`).
+
+    `marg` (this model's marginal_density(model, grids) result) may be passed in to
+    reuse a density already computed elsewhere for this (model, grids) pair instead
+    of recomputing it here just to build the mask."""
     mu, std, pvec = model["mu"], model["std"], model["pvec"]
     C, S, K, P = mu.shape
-    marg = marginal_density(model, grids)             # invariant, for the mask
+    if marg is None:
+        marg = marginal_density(model, grids)         # invariant, for the mask
     rows = []
     for j, pj in enumerate(param_names):
         x_full = grids[j]
         eval_pts = np.linspace(x_full.min(), x_full.max(), n_eval)
         marg_at = np.interp(eval_pts, x_full, marg[j])
         keep = eval_pts[marg_at >= marg_at.max() * density_threshold]
-        ess_vals, rhat_vals = [], []
-        for x in keep:
-            pdf = norm.pdf(x, loc=mu[:, :, :, j], scale=std[:, :, :, j] + 1e-8)  # (C,S,K)
-            f = np.sum(pvec * pdf, axis=2)                                        # (C,S)
-            ess_vals.append(_ess(f))
-            rhat_vals.append(_rhat(f))
-        if not ess_vals:                      # no point cleared the density mask
+        if len(keep):
+            pdf = norm.pdf(keep[None, None, None, :],
+                            loc=mu[:, :, :, j, None], scale=std[:, :, :, j, None] + 1e-8)  # (C,S,K,n_keep)
+            f = np.sum(pvec[:, :, :, None] * pdf, axis=2)                                   # (C,S,n_keep)
+            rhat_vals, ess_vals = _rhat_ess_batch(f)
+        else:
+            rhat_vals, ess_vals = [], []
+        if not len(ess_vals):                 # no point cleared the density mask
             rows.append({"param": pj, "n_pts": 0, "min_ESS": np.nan, "mean_ESS": np.nan,
                          "max_Rhat": np.nan, "mean_Rhat": np.nan})
             continue
