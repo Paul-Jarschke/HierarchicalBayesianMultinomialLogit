@@ -160,6 +160,82 @@ def generate_mixture_simulated_data(
     }
 
 
+def generate_standard_simulated_data(n_units=300, n_obs=50, seed=42):
+    """
+    Simulate data for the STANDARD (one-normal-component, no mixture) Bayesian
+    Hierarchical Multinomial Logit model, Rossi (2006) §5.4:
+
+        beta_i = [1, z_i] @ Delta + u_i,   u_i ~ N(0, Sigma)
+
+    Z is stored WITHOUT the intercept column and exactly column-centred (the
+    repo-wide convention; bayesm::rhierMnlRwMixture requires demeaned Z). The
+    model builders prepend the intercept themselves, so TRUE_DELTA is the FULL
+    (1 + n_demos, n_params) matrix whose first row is the population mean.
+
+    Fixed, interpretable ground truth (4 alts, 3 ASCs + 1 unstandardised
+    price attribute ~ U(1, 5), 1 continuous demographic):
+
+        TRUE_DELTA = [[ 1.5,  0.5, -0.5, -2.0],     # intercept row
+                      [ 0.8, -0.3,  0.0,  0.5]]     # demographic row
+        TRUE_SIGMA = diag(1.0, 0.5, 1.5, 0.5)
+
+    Returns a dict with X, y, Z, unit_idx, dims, and all TRUE_* ground truth.
+    """
+    np.random.seed(seed)
+
+    n_alts   = 4
+    n_params = 4
+    n_demos  = 1
+
+    # Demographics: stored centred, no intercept column.
+    z = np.random.normal(0, 1, size=(n_units, n_demos))
+    z -= z.mean(axis=0)
+
+    Delta_true = np.array([
+        [ 1.5,  0.5, -0.5, -2.0],   # intercept row (population mean)
+        [ 0.8, -0.3,  0.0,  0.5],   # demographic row
+    ])
+    Sigma_true = np.diag([1.0, 0.5, 1.5, 0.5])
+
+    Z_full = np.column_stack([np.ones(n_units), z])
+    beta_true = np.zeros((n_units, n_params))
+    for i in range(n_units):
+        mu_i = Z_full[i] @ Delta_true
+        beta_true[i] = np.random.multivariate_normal(mu_i, Sigma_true)
+
+    X_list, y_list, unit_idx_list = [], [], []
+    for i in range(n_units):
+        for t in range(n_obs):
+            X_it = np.zeros((n_alts, n_params))
+            for a in range(1, n_alts):          # alt 0 is reference
+                X_it[a, a - 1] = 1.0
+            X_it[:, n_alts - 1] = np.random.uniform(1.0, 5.0, n_alts)
+
+            U_it  = X_it @ beta_true[i]
+            exp_U = np.exp(U_it - U_it.max())
+            probs = exp_U / exp_U.sum()
+            y_list.append(int(np.random.choice(n_alts, p=probs)))
+            X_list.append(X_it)
+            unit_idx_list.append(i)
+
+    return {
+        "X":           jnp.array(X_list),
+        "y":           jnp.array(y_list),
+        "Z":           jnp.array(z),
+        "unit_idx":    jnp.array(unit_idx_list),
+        "n_units":     n_units,
+        "n_params":    n_params,
+        "n_demos":     n_demos,
+        "n_alts":      n_alts,
+        "K":           1,
+        "param_names": ["Alt1", "Alt2", "Alt3", "Price"],
+        "demo_names":  ["Intercept", "z1"],
+        "TRUE_DELTA":  Delta_true,
+        "TRUE_SIGMA":  Sigma_true,
+        "TRUE_BETA":   beta_true,
+    }
+
+
 def save_to_json(data, filename="sim_data.json"):
     """Serialise all arrays to lists and write to a JSON file."""
 
