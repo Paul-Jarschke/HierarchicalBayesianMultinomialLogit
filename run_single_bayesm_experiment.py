@@ -21,7 +21,7 @@ back to Sigma. R exports the precision Sigma^{-1} = rooti @ rooti.T (bayesm's ow
 definition); here we take its lower Cholesky L (L L.T = precision) and map it
 through FillScaleTriL().inverse - the exact representation the Liesel model stores.
 
-Invoked by run_all_bayesm_experiments.py as a subprocess (one process per fit).
+Invoked by run_all_experiments.py (--samplers bayesm) as a subprocess (one process per fit).
 """
 
 import argparse
