@@ -61,7 +61,7 @@ def build_bayesm_mixture_hbmnl_model(
         K: int,                      # ── REQUIRED: number of model components (K_MODEL)
         A_delta: float = 0.01,
         a_mu: float = 0.01,
-        dirichlet_a: float = 5.0):
+        dirichlet_a: float = 1.0):
     """
     Build a K-component mixture HBMNL Liesel model with EXPLICIT allocations
     (bayesm-augmented parameterisation).
@@ -75,7 +75,11 @@ def build_bayesm_mixture_hbmnl_model(
                   This is a modelling choice, decoupled from the data's true K.
     A_delta     : prior precision scaling for Delta (if demographics Z used).
     a_mu        : prior precision scaling for the mixture component means.
-    dirichlet_a : Dirichlet concentration on pvec (bayesm default: 5.0).
+    dirichlet_a : Dirichlet concentration on pvec. < 1.0 encourages sparse
+                  weights (spurious components collapse toward 0), useful when
+                  K_MODEL > K_TRUE; == 1.0 is uniform (uninformative on the
+                  simplex - does not assume overspecification); > 1.0 pulls
+                  toward equal weights.
 
     Returns
     -------
