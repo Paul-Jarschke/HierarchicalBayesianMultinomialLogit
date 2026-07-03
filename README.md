@@ -73,11 +73,10 @@ library under `renv/library/`, isolated from your global R packages.
 HierarchicalBayesianMNL/
 │
 ├── generate_data.py                    # CLI - generates all simulation datasets
-├── run_single_experiment.py            # runs ONE model fit, saves all output
-├── run_all_experiments.py              # Liesel batch orchestrator (subprocess per fit)
-├── run_single_bayesm_experiment.py     # one bayesm fit: drives the R sampler, writes canonical artifacts
+├── run_single_experiment.py            # runs ONE Liesel model fit, saves all output
+├── run_single_bayesm_experiment.py     # runs ONE bayesm fit: drives the R sampler, writes canonical artifacts
 ├── run_single_bayesm_experiment.R      # bayesm rhierMnlRwMixture sampler (per chain, seed loop)
-├── run_all_bayesm_experiments.py       # bayesm batch orchestrator (subprocess per fit)
+├── run_all_experiments.py              # batch orchestrator, all samplers incl. bayesm (--samplers selects which)
 ├── analysis_template.ipynb             # per-run diagnostics / recovery notebook
 ├── label_switching_template.ipynb      # per-run ECR.iterative.1 relabeling notebook
 ├── marginal_comparison_template.ipynb  # per-<k>_comp marginal-density comparison notebook
@@ -330,27 +329,27 @@ The run dies if the machine sleeps or the terminal closes. Before leaving it:
 
 ### The bayesm batch
 
-The bayesm side mirrors the Liesel batch. `run_all_bayesm_experiments.py` defines
-its grid (`{1, 2} chains × {1,2,3,5} components`) and runs each fit as a separate
-subprocess via `run_single_bayesm_experiment.py`, which drives the R sampler
+The bayesm side runs through the same `run_all_experiments.py` orchestrator as
+NUTS/HMC, via `--samplers bayesm`. It runs each fit as a separate subprocess via
+`run_single_bayesm_experiment.py`, which drives the R sampler
 (`run_single_bayesm_experiment.R`, `rhierMnlRwMixture`) and converts its draws into
 the **same** `posterior_raw.pkl` / `meta.json` artifacts the Liesel runs produce -
 so every downstream notebook treats bayesm exactly like NUTS/HMC.
 
 ```bash
-uv run python run_all_bayesm_experiments.py --dry-run        # print the plan only
-uv run python run_all_bayesm_experiments.py                  # fixed5 (K_MODEL=5 everywhere)
-uv run python run_all_bayesm_experiments.py --strategy known # fit K_MODEL = K_TRUE
-uv run python run_all_bayesm_experiments.py --force          # re-run completed experiments
+uv run python run_all_experiments.py --samplers bayesm --dry-run        # print the plan only
+uv run python run_all_experiments.py --samplers bayesm                  # fixed5 (K_MODEL=5 everywhere)
+uv run python run_all_experiments.py --samplers bayesm --strategy known # fit K_MODEL = K_TRUE
+uv run python run_all_experiments.py --samplers bayesm --force          # re-run completed experiments
 ```
 
-- Output lands in a `bayesm/` folder beside `NUTS/` and `HMC/` in each `<k>_comp`;
+- Output lands in a `BAYESM/` folder beside `NUTS/` and `HMC/` in each `<k>_comp`;
   resumable and auditable exactly like the Liesel batch.
 - Multiple chains are produced via a seed loop and stacked to `(chains, draws, ...)`.
 - MCMC length: the R side keeps every raw draw, discards the first `BURN_IN`
   iterations, then thins by `THIN`, so retained draws/chain `= (R_TOTAL - BURN_IN) / THIN`
   (default `(42000 - 2000) / 4 = 10000`, matching the Liesel chains). Edit these at
-  the top of `run_all_bayesm_experiments.py`.
+  the top of `run_all_experiments.py`.
 - Requires the R toolchain (renv restored). The Rscript path can be overridden via
   the `BAYESM_RSCRIPT` environment variable.
 
@@ -519,7 +518,7 @@ uv run python execute_analysis_notebooks.py --name marginal_comparison.ipynb --f
 ## bayesm (R) Replication
 
 bayesm runs through the automated pipeline in
-[The bayesm batch](#the-bayesm-batch): `run_all_bayesm_experiments.py` ->
+[The bayesm batch](#the-bayesm-batch): `run_all_experiments.py --samplers bayesm` ->
 `run_single_bayesm_experiment.py` -> `run_single_bayesm_experiment.R` (there is no
 longer a hand-run `.R` script next to each notebook). The R script loads the
 **same** scenario JSON the Liesel run used (so the two samplers provably compare on
