@@ -147,6 +147,36 @@ def build_grids_full(fitted_models, true_model=None, n_grid=4000, n_sigma=6):
     return [np.linspace(lo[j], hi[j], n_grid) for j in range(P)]
 
 
+def build_grids_chebyshev(fitted_models, true_model=None, n_grid=2000, k=5.0):
+    """Per-parameter grid clipped to each model's own [mean - k*std, mean + k*std],
+    unioned over samplers (and the True DGP if given). mean/std are the AGGREGATE
+    mixture mean and variance (Rossi Eq. 5.5.2, via `mixture_moments`), not
+    per-component - so a diffuse surplus/empty component is already down-weighted
+    by its own pvec before the window is set, unlike `build_grids_full`'s raw
+    per-component min/max envelope.
+
+    Chebyshev's inequality, P(|X - mean| >= k*std) <= 1/k**2, holds for ANY
+    distribution with finite variance - no normality/unimodality assumption,
+    which matters here since the invariant marginal is itself a mixture and can
+    be skewed or multimodal. k=5 -> at least 1 - 1/5**2 = 96% of each model's own
+    marginal mass is guaranteed to lie inside its window before the union.
+
+    Contrast `build_grids_full` (unbounded raw envelope over every component -
+    can be arbitrarily wide when K_MODEL > K_TRUE, squashing real mass into a
+    few pixels) and `build_grids` (per-draw live-component top-K_true support,
+    percentile-trimmed - excludes surplus components entirely)."""
+    P = fitted_models[0]["mu"].shape[-1]
+    lo = np.full(P, np.inf)
+    hi = np.full(P, -np.inf)
+    models = list(fitted_models) + ([true_model] if true_model is not None else [])
+    for m in models:
+        mean, var = mixture_moments(m)
+        std = np.sqrt(np.clip(np.diag(var), 0.0, None))
+        lo = np.minimum(lo, mean - k * std)
+        hi = np.maximum(hi, mean + k * std)
+    return [np.linspace(lo[j], hi[j], n_grid) for j in range(P)]
+
+
 # --------------------------------------------------------------------------- #
 # Marginal density (Eq. 5.5.19) and mixture moments (Eq. 5.5.2)
 # --------------------------------------------------------------------------- #
