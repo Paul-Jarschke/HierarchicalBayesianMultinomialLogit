@@ -81,9 +81,7 @@ HierarchicalBayesianMNL/
 ├── analysis_template.ipynb             # per-run diagnostics / recovery notebook
 ├── label_switching_template.ipynb      # per-run ECR.iterative.1 relabeling notebook
 ├── marginal_comparison_template.ipynb  # per-<k>_comp marginal-density comparison notebook
-├── distribute_analysis_notebooks.py    # copies template -> <run>/analysis.ipynb
-├── distribute_label_switching_notebooks.py     # copies template -> <run>/label_switching.ipynb
-├── distribute_marginal_comparison_notebooks.py # copies template -> <k>_comp/marginal_comparison.ipynb
+├── distribute_notebooks.py             # copies templates -> <run>/ or <k>_comp/ (--which selects which)
 ├── execute_analysis_notebooks.py       # runs notebooks in-place via nbconvert (--name selects which)
 │
 ├── pyproject.toml / uv.lock            # Python dependencies (uv)
@@ -368,22 +366,23 @@ first; the label-switching commands are in their own subsection below.
 
 ### Distributing the template
 
-`distribute_analysis_notebooks.py` copies `analysis_template.ipynb` as `analysis.ipynb`
-into every run folder that contains a `posterior_raw.pkl`. The notebook is
-self-configuring: it reads `meta.json` at runtime to locate its own artifacts.
+`distribute_notebooks.py --which analysis` copies `analysis_template.ipynb` as
+`analysis.ipynb` into every run folder that contains a `posterior_raw.pkl`. The
+notebook is self-configuring: it reads `meta.json` at runtime to locate its
+own artifacts.
 
 ```bash
 # Preview which folders would receive a notebook
-uv run python distribute_analysis_notebooks.py --dry-run
+uv run python distribute_notebooks.py --which analysis --dry-run
 
 # Copy where analysis.ipynb is missing (safe default)
-uv run python distribute_analysis_notebooks.py
+uv run python distribute_notebooks.py --which analysis
 
 # Overwrite existing analysis.ipynb (e.g. after updating the template)
-uv run python distribute_analysis_notebooks.py --force
+uv run python distribute_notebooks.py --which analysis --force
 
 # Write under a different filename instead of analysis.ipynb
-uv run python distribute_analysis_notebooks.py --name custom.ipynb
+uv run python distribute_notebooks.py --which analysis --name custom.ipynb
 ```
 
 ### Executing the notebooks
@@ -439,14 +438,15 @@ It reconstructs the allocations from the saved draws (`mu_k + Z@Delta`, `Sigma_k
 bayesm. The logic lives in `src/label_switching.py`; the template is
 `label_switching_template.ipynb`.
 
-It has its own distributor, and is executed via the `--name` flag of the shared
-runner above (so all of `--dry-run`, `--force`, `--filter`, `--timeout` apply):
+It is distributed via the `--which` flag of the shared distributor, and executed
+via the `--name` flag of the shared runner (so all of `--dry-run`, `--force`,
+`--filter`, `--timeout` apply):
 
 ```bash
 # Distribute label_switching.ipynb into every run folder (--force to overwrite)
-uv run python distribute_label_switching_notebooks.py
-uv run python distribute_label_switching_notebooks.py --force
-uv run python distribute_label_switching_notebooks.py --dry-run
+uv run python distribute_notebooks.py --which label_switching
+uv run python distribute_notebooks.py --which label_switching --force
+uv run python distribute_notebooks.py --which label_switching --dry-run
 
 # Run all label-switching notebooks (skips already-executed; --force to re-run all)
 uv run python execute_analysis_notebooks.py --name label_switching.ipynb
@@ -454,7 +454,7 @@ uv run python execute_analysis_notebooks.py --name label_switching.ipynb --force
 uv run python execute_analysis_notebooks.py --name label_switching.ipynb --dry-run
 
 # Full refresh from the template, then run all (use after editing the template)
-uv run python distribute_label_switching_notebooks.py --force
+uv run python distribute_notebooks.py --which label_switching --force
 uv run python execute_analysis_notebooks.py --name label_switching.ipynb --force
 ```
 
@@ -496,20 +496,21 @@ results. Three deliberate choices:
   - Gelman et al. (2013), BDA3 §11.4 (split-R̂); Gelman & Rubin (1992) (the original
     multi-chain rationale for detecting between-mode non-convergence).
 
-It is distributed by its own script and run via the shared runner's `--name` flag:
+It is distributed via the shared distributor's `--which` flag and run via the
+shared runner's `--name` flag:
 
 ```bash
 # Distribute marginal_comparison.ipynb into every <k>_comp folder
-uv run python distribute_marginal_comparison_notebooks.py
-uv run python distribute_marginal_comparison_notebooks.py --force
-uv run python distribute_marginal_comparison_notebooks.py --dry-run
+uv run python distribute_notebooks.py --which marginal_comparison
+uv run python distribute_notebooks.py --which marginal_comparison --force
+uv run python distribute_notebooks.py --which marginal_comparison --dry-run
 
 # Run all marginal-comparison notebooks (skips already-executed; --force to re-run)
 uv run python execute_analysis_notebooks.py --name marginal_comparison.ipynb --timeout 1200
 uv run python execute_analysis_notebooks.py --name marginal_comparison.ipynb --force --timeout 1200
 
 # Full refresh from the template, then run all
-uv run python distribute_marginal_comparison_notebooks.py --force
+uv run python distribute_notebooks.py --which marginal_comparison --force
 uv run python execute_analysis_notebooks.py --name marginal_comparison.ipynb --force --timeout 1200
 ```
 
