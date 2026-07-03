@@ -30,17 +30,17 @@ PROJECT_ROOT = next(
     p for p in [pathlib.Path(__file__).resolve(), *pathlib.Path(__file__).resolve().parents]
     if (p / "pyproject.toml").exists()
 )
-EXP_ROOT      = PROJECT_ROOT / "hbmnl_mixture_experiments"
-NOTEBOOK_NAME = "analysis.ipynb"
+DEFAULT_EXP_ROOT = "hbmnl_mixture_experiments"
+NOTEBOOK_NAME    = "analysis.ipynb"
 
 
-def find_notebooks(filter_str=None, name=NOTEBOOK_NAME):
-    """Return sorted list of notebooks named <name> anywhere under EXP_ROOT.
+def find_notebooks(exp_root, filter_str=None, name=NOTEBOOK_NAME):
+    """Return sorted list of notebooks named <name> anywhere under exp_root.
 
     Works for the per-run notebooks (analysis.ipynb, label_switching.ipynb, which
     live beside a results/ dir) and the x_comp-level marginal_comparison.ipynb
     alike - each is executed with its own folder as cwd so it self-resolves."""
-    notebooks = sorted(EXP_ROOT.rglob(name))
+    notebooks = sorted(exp_root.rglob(name))
     if filter_str:
         filter_norm = filter_str.replace("\\", "/")
         notebooks = [nb for nb in notebooks if filter_norm in str(nb).replace("\\", "/")]
@@ -90,12 +90,16 @@ def main():
     ap.add_argument("--name",    default=NOTEBOOK_NAME,
                     help=f"Notebook filename to execute in each run folder (default: {NOTEBOOK_NAME}; "
                          f"e.g. label_switching.ipynb).")
+    ap.add_argument("--exp-root", default=DEFAULT_EXP_ROOT,
+                    help=f"Experiments tree to search, relative to the repo root "
+                         f"(default: {DEFAULT_EXP_ROOT}; e.g. hbmnl_normal_experiments).")
     args = ap.parse_args()
 
-    notebooks = find_notebooks(args.filter, args.name)
+    exp_root = PROJECT_ROOT / args.exp_root
+    notebooks = find_notebooks(exp_root, args.filter, args.name)
 
     if not notebooks:
-        sys.exit(f"No {args.name} files found under {EXP_ROOT}.")
+        sys.exit(f"No {args.name} files found under {exp_root}.")
 
     print(f"Notebooks found : {len(notebooks)}")
     if args.filter:

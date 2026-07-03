@@ -27,7 +27,7 @@ PROJECT_ROOT = next(
     p for p in [pathlib.Path(__file__).resolve(), *pathlib.Path(__file__).resolve().parents]
     if (p / "pyproject.toml").exists()
 )
-EXP_ROOT = PROJECT_ROOT / "hbmnl_mixture_experiments"
+DEFAULT_EXP_ROOT = "hbmnl_mixture_experiments"
 
 # key -> (template filename, output filename, target level)
 #   "run"    : <sampler>/<run>/ folder (parent.parent of results/posterior_raw.pkl)
@@ -40,8 +40,8 @@ NOTEBOOKS = {
 }
 
 
-def find_targets(level):
-    pkls = list(EXP_ROOT.rglob("posterior_raw.pkl"))
+def find_targets(exp_root, level):
+    pkls = list(exp_root.rglob("posterior_raw.pkl"))
     if level == "run":
         return sorted({p.parent.parent for p in pkls})
     if level == "k_comp":
@@ -49,15 +49,15 @@ def find_targets(level):
     raise ValueError(level)
 
 
-def distribute(key, template_name, output_name, level, name_override, force, dry_run):
+def distribute(exp_root, key, template_name, output_name, level, name_override, force, dry_run):
     template = PROJECT_ROOT / template_name
     if not template.exists():
         print(f"[{key}] SKIP: template not found: {template.relative_to(PROJECT_ROOT)}")
         return 0, 0
 
-    targets = find_targets(level)
+    targets = find_targets(exp_root, level)
     if not targets:
-        print(f"[{key}] no target folders found under {EXP_ROOT} (no posterior_raw.pkl files).")
+        print(f"[{key}] no target folders found under {exp_root} (no posterior_raw.pkl files).")
         return 0, 0
 
     name = name_override or output_name
@@ -91,6 +91,9 @@ def main():
     ap.add_argument("--dry-run", action="store_true", help="List target folders and exit.")
     ap.add_argument("--name", default=None,
                     help="Filename to write instead of the default. Only valid with a single --which key.")
+    ap.add_argument("--exp-root", default=DEFAULT_EXP_ROOT,
+                    help=f"Experiments tree to distribute into, relative to the repo root "
+                         f"(default: {DEFAULT_EXP_ROOT}; e.g. hbmnl_normal_experiments).")
     args = ap.parse_args()
 
     keys = [k.strip() for k in args.which.split(",") if k.strip()]
@@ -100,11 +103,16 @@ def main():
     if args.name and len(keys) != 1:
         ap.error("--name requires exactly one --which key.")
 
+    exp_root = PROJECT_ROOT / args.exp_root
+    if not exp_root.exists():
+        ap.error(f"--exp-root does not exist: {exp_root}")
+
     total_copied = total_skipped = 0
     for key in keys:
         template_name, output_name, level = NOTEBOOKS[key]
         copied, skipped = distribute(
-            key, template_name, output_name, level, args.name, args.force, args.dry_run,
+            exp_root, key, template_name, output_name, level,
+            args.name, args.force, args.dry_run,
         )
         total_copied += copied
         total_skipped += skipped
