@@ -120,6 +120,9 @@ def parse_args():
                     help="bayesm_gibbs: raw sweeps discarded before thinning.")
     ap.add_argument("--thin", type=int, default=4,
                     help="bayesm_gibbs: keep every --thin-th raw draw after burn-in.")
+    ap.add_argument("--no-informed-init", action="store_true",
+                    help="nuts/hmc: use the model's naive (0,I,uniform) default "
+                         "init instead of Rossi/bayesm's own initialisation scheme.")
     ap.add_argument("--no-save-raw", action="store_true")
     ap.add_argument("--no-save-results", action="store_true",
                     help="Skip pickling the full mcmc_results object.")
@@ -203,6 +206,9 @@ def main():
         hlog(f"dirichlet_a        : {args.dirichlet_a}  | a_mu: {args.a_mu} | A_delta: {args.a_delta}")
         if args.sampler == "hmc":
             hlog(f"integration steps  : {args.num_integration_steps}")
+        if args.sampler in ("nuts", "hmc"):
+            hlog(f"informed init      : {not args.no_informed_init} "
+                 f"(Rossi/bayesm scheme if True)")
         if args.sampler == "bayesm_gibbs":
             hlog(f"rw_s / frac_w      : "
                  f"{args.rw_s if args.rw_s is not None else 'auto (2.93/sqrt(P))'}"
@@ -234,6 +240,7 @@ def main():
                 model=model, data_dict=choice_data, K=args.k_model,
                 chains=args.chains, warmup=args.warmup,
                 posterior=args.posterior, seed=args.seed,
+                use_informed_init=not args.no_informed_init,
             )
         elif args.sampler == "hmc":
             from src.inference.hmc import run_hmc_inference_mixture_hbmnl
@@ -242,6 +249,7 @@ def main():
                 num_integration_steps=args.num_integration_steps,
                 chains=args.chains, warmup=args.warmup,
                 posterior=args.posterior, seed=args.seed,
+                use_informed_init=not args.no_informed_init,
             )
         elif args.sampler == "iwls":
             from src.inference.iwls import run_iwls_inference_mixture_hbmnl
@@ -322,6 +330,7 @@ def main():
             "warmup": meta_warmup, "posterior": meta_posterior, "seed": args.seed,
             "a_delta": args.a_delta, "a_mu": args.a_mu, "dirichlet_a": args.dirichlet_a,
             "num_integration_steps": args.num_integration_steps if args.sampler == "hmc" else None,
+            "informed_init": (not args.no_informed_init) if args.sampler in ("nuts", "hmc") else None,
             "rw_s": args.rw_s if args.sampler == "bayesm_gibbs" else None,
             "frac_w": args.frac_w if args.sampler == "bayesm_gibbs" else None,
             "r_total": args.r_total if args.sampler == "bayesm_gibbs" else None,

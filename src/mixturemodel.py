@@ -56,7 +56,7 @@ def build_mixture_hbmnl_model(
         K: int,                      # ── REQUIRED: number of model components (K_MODEL)
         A_delta: float = 0.01,
         a_mu: float = 0.01,
-        dirichlet_a: float = 5.0):
+        dirichlet_a: float = 1.0):
     """
     Build a K-component mixture HBMNL Liesel model.
  
@@ -206,5 +206,23 @@ def build_mixture_hbmnl_model(
         distribution=lsl.Dist(tfd.Categorical, logits=logits),
         name="y",
     )
- 
-    return lsl.Model([y_var])
+
+    model = lsl.Model([y_var])
+
+    # Hyperparameters travel with the model so src.inference.init's
+    # data-informed initial-value construction (Rossi/bayesm's own scheme)
+    # can read the SAME (nu, V, a_mu) this model was actually built with,
+    # rather than requiring them to be threaded separately and risking drift.
+    # Distinct attribute name from build_bayesm_mixture_hbmnl_model's
+    # "bayesm_prior" so the two model types remain distinguishable by
+    # attribute presence (bayesm_gibbs.py relies on this).
+    model.prior_hparams = {
+        "K": K_comp,
+        "nu": nu,
+        "V": V,
+        "a_mu": float(a_mu),
+        "A_delta": float(A_delta),
+        "dirichlet_a": float(dirichlet_a),
+        "has_Z": has_Z,
+    }
+    return model

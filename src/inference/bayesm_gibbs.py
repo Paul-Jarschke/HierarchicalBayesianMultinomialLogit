@@ -148,6 +148,58 @@ def _fractional_candidate_prep(X_units, y_units, mask, w):
 
 
 # --------------------------------------------------------------------------- #
+# {mu_k, Sigma_k} | ind, theta  (drawCompsFromLabels/rmultireg, Eq. 5.5.11-12)
+# --------------------------------------------------------------------------- #
+def _niw_conjugate_draw(prng_key, theta, ind, K_comp, n_params, a_mu, nu, V,
+                         eye_P, fill_tril):
+    """
+    One draw of {mu_k, Sigma_k} | ind, theta from their exact bayesm conjugate
+    NIW posterior, via masked one-hot sufficient statistics. Module-level (not
+    a closure) so it is the SINGLE implementation of this formula, shared by
+    the Gibbs sweep's own draw_comps step (this file) and by
+    src.inference.init's data-informed NUTS/HMC initial-value construction --
+    the latter reproduces Rossi's algorithm's first Gibbs draw exactly rather
+    than approximating it, since NUTS/HMC have no Gibbs step of their own.
+    """
+    w1 = jax.nn.one_hot(ind, K_comp, dtype=theta.dtype)               # (n, K)
+
+    n_k   = w1.sum(axis=0)                                            # (K,)
+    sum_k = w1.T @ theta                                              # (K, P)
+    Syy   = jnp.einsum("nk,np,nq->kpq", w1, theta, theta)             # (K, P, P)
+
+    denom  = n_k + a_mu
+    btilde = sum_k / denom[:, None]
+    S = Syy - jnp.einsum("kp,kq->kpq", sum_k, sum_k) / denom[:, None, None]
+    Vpost = V[None] + S                                               # (K, P, P)
+    Vpost = 0.5 * (Vpost + jnp.swapaxes(Vpost, -1, -2))
+
+    # Sigma_k^{-1} ~ Wishart(nu + n_k, Vpost^{-1}) via Bartlett; the draw
+    # is produced directly as its lower Cholesky factor M (= model coords).
+    Lv = jnp.linalg.cholesky(Vpost)
+    Vpost_inv = cho_solve((Lv, True), jnp.broadcast_to(eye_P, Vpost.shape))
+    Vpost_inv = 0.5 * (Vpost_inv + jnp.swapaxes(Vpost_inv, -1, -2))
+    Ls = jnp.linalg.cholesky(Vpost_inv)                               # (K, P, P)
+
+    k_chi, k_off, k_mu = jax.random.split(prng_key, 3)
+    df = nu + n_k                                                     # (K,)
+    j = jnp.arange(n_params, dtype=theta.dtype)
+    chi2 = 2.0 * jax.random.gamma(k_chi, (df[:, None] - j[None, :]) / 2.0)
+    bart = jnp.tril(jax.random.normal(k_off, (K_comp, n_params, n_params)), -1)
+    bart = bart + jnp.sqrt(chi2)[:, :, None] * eye_P[None]
+    M = Ls @ bart                                                     # (K, P, P)
+
+    # mu_k | Sigma_k ~ N(btilde, Sigma_k / (n_k + a_mu)),  Sigma = (M M')^{-1}
+    eps = jax.random.normal(k_mu, (K_comp, n_params))
+    dev = solve_triangular(M, eps[..., None], lower=True, trans=1)[..., 0]
+    mu_new = btilde + dev / jnp.sqrt(denom)[:, None]
+
+    return {
+        "mu_k": mu_new,
+        "sigma_inv_chol_k_latent": fill_tril.inverse(M),
+    }
+
+
+# --------------------------------------------------------------------------- #
 # Main runner
 # --------------------------------------------------------------------------- #
 def run_bayesm_gibbs_inference_mixture_hbmnl(
@@ -267,42 +319,10 @@ def run_bayesm_gibbs_inference_mixture_hbmnl(
     def draw_comps(prng_key, model_state):
         pos = interface.extract_position(hier_keys, model_state)
         theta = _theta_star(pos)
-        w1 = jax.nn.one_hot(pos["ind"], K_comp, dtype=theta.dtype)   # (n, K)
-
-        n_k   = w1.sum(axis=0)                                       # (K,)
-        sum_k = w1.T @ theta                                         # (K, P)
-        Syy   = jnp.einsum("nk,np,nq->kpq", w1, theta, theta)        # (K, P, P)
-
-        denom  = n_k + a_mu
-        btilde = sum_k / denom[:, None]
-        S = Syy - jnp.einsum("kp,kq->kpq", sum_k, sum_k) / denom[:, None, None]
-        Vpost = V[None] + S                                          # (K, P, P)
-        Vpost = 0.5 * (Vpost + jnp.swapaxes(Vpost, -1, -2))
-
-        # Sigma_k^{-1} ~ Wishart(nu + n_k, Vpost^{-1}) via Bartlett; the draw
-        # is produced directly as its lower Cholesky factor M (= model coords).
-        Lv = jnp.linalg.cholesky(Vpost)
-        Vpost_inv = cho_solve((Lv, True), jnp.broadcast_to(eye_P, Vpost.shape))
-        Vpost_inv = 0.5 * (Vpost_inv + jnp.swapaxes(Vpost_inv, -1, -2))
-        Ls = jnp.linalg.cholesky(Vpost_inv)                          # (K, P, P)
-
-        k_chi, k_off, k_mu = jax.random.split(prng_key, 3)
-        df = nu + n_k                                                # (K,)
-        j = jnp.arange(n_params, dtype=theta.dtype)
-        chi2 = 2.0 * jax.random.gamma(k_chi, (df[:, None] - j[None, :]) / 2.0)
-        bart = jnp.tril(jax.random.normal(k_off, (K_comp, n_params, n_params)), -1)
-        bart = bart + jnp.sqrt(chi2)[:, :, None] * eye_P[None]
-        M = Ls @ bart                                                # (K, P, P)
-
-        # mu_k | Sigma_k ~ N(btilde, Sigma_k / (n_k + a_mu)),  Sigma = (M M')^{-1}
-        eps = jax.random.normal(k_mu, (K_comp, n_params))
-        dev = solve_triangular(M, eps[..., None], lower=True, trans=1)[..., 0]
-        mu_new = btilde + dev / jnp.sqrt(denom)[:, None]
-
-        return {
-            "mu_k": mu_new,
-            "sigma_inv_chol_k_latent": fill_tril.inverse(M),
-        }
+        return _niw_conjugate_draw(
+            prng_key, theta, pos["ind"],
+            K_comp, n_params, a_mu, nu, V, eye_P, fill_tril,
+        )
 
     # ── 2. ind | comps, pvec  (drawLabelsFromComps, Eq. 5.5.9) ─────────────
     def draw_ind(prng_key, model_state):
