@@ -5,9 +5,14 @@ Copy notebook templates into every folder that should have them.
 <sampler>/<run>/ folder (found via <run>/results/posterior_raw.pkl). Each is
 self-configuring - it reads meta.json at runtime to locate its own artifacts.
 
-`marginal_comparison.ipynb` is a per-<k>_comp notebook: it contrasts the
-sampler runs that sit side by side in one <k>_comp folder, so a single copy
-is placed at that level rather than per-run.
+`marginal_comparison.ipynb` and `full_marginal_comparison.ipynb` are per-<k>_comp
+notebooks: each contrasts the sampler runs that sit side by side in one <k>_comp
+folder, so a single copy is placed at that level rather than per-run.
+`marginal_comparison.ipynb` clips the grid to the fitted models' live-component
+support; `full_marginal_comparison.ipynb` runs the comparison twice per grid it
+builds - once on the full, unbounded envelope over every component, and once on
+a Chebyshev-filtered window (mean +/- 5 std, >=96% density guarantee) - to keep
+sampler-outlier tails from dominating the unbounded pass.
 
 Usage
     uv run python distribute_notebooks.py                              # all three, copy where missing
@@ -35,8 +40,12 @@ DEFAULT_EXP_ROOT = "hbmnl_mixture_experiments"
 #              shared by every sampler folder at that comp level
 NOTEBOOKS = {
     "analysis":            ("analysis_template.ipynb",            "analysis.ipynb",            "run"),
+    "standard_analysis":   ("standard_analysis_template.ipynb",    "analysis.ipynb",            "run"),
     "label_switching":     ("label_switching_template.ipynb",      "label_switching.ipynb",      "run"),
     "marginal_comparison": ("marginal_comparison_template.ipynb",  "marginal_comparison.ipynb",  "k_comp"),
+    "full_marginal_comparison": (
+        "full_marginal_comparison_template.ipynb", "full_marginal_comparison.ipynb", "k_comp",
+    ),
 }
 
 
