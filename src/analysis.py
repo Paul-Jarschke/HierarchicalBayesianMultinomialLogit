@@ -14,6 +14,12 @@ Convention used throughout
 Functions that overlay ground truth (summarize_mu_k, plot_pvec_diagnostics,
 summarize_pvec) therefore take an optional `K_true` argument. If it is omitted
 they fall back to assuming K == K_true (the correctly-specified case).
+
+Plain (non-K-indexed) counterparts - summarize_mu, plot_mu_diagnostics,
+plot_cholesky_trace, recover_covariance_matrix - serve the standard
+(single-component) HBMNL model, where posterior arrays have no component axis
+at all. Delta and beta_i diagnostics are already component-axis-free and are
+shared by both models unchanged.
 """
 
 import jax
@@ -63,6 +69,40 @@ def plot_cholesky_traces(samples_dict, n_params, k_idx=0,
     fig.legend(handles, labels, loc="lower center", ncol=n_chains,
                bbox_to_anchor=(0.5, 0.02))
     plt.suptitle(f"Cholesky Factor of Precision Matrix - Component {k_idx + 1}", fontsize=20)
+    plt.tight_layout(rect=[0, 0.05, 1, 0.95])
+    plt.show()
+
+
+def plot_cholesky_trace(samples_dict, n_params,
+                        param_name="sigma_inv_chol_latent", figsize=(15, 12)):
+    """Trace plots of the latent Cholesky entries (single-component model)."""
+    latent_samples = samples_dict[param_name]
+    n_chains, n_draws, n_latent = latent_samples.shape
+
+    fig, axes = plt.subplots(n_params, n_params, figsize=figsize,
+                             sharex=True, sharey=False)
+    if n_params == 1:
+        axes = np.array([[axes]])
+
+    latent_idx = 0
+    for i in range(n_params):
+        for j in range(n_params):
+            ax = axes[i, j]
+            if i >= j and latent_idx < n_latent:
+                for chain in range(n_chains):
+                    ax.plot(latent_samples[chain, :, latent_idx], label=f"Chain {chain}")
+                ax.set_title(f"Latent L[{i},{j}]", fontsize=10)
+                latent_idx += 1
+            else:
+                ax.axis("off")
+            ax.grid(True)
+            if j == 0:
+                ax.set_ylabel("Value")
+
+    handles, labels = axes[0, 0].get_legend_handles_labels()
+    fig.legend(handles, labels, loc="lower center", ncol=n_chains,
+               bbox_to_anchor=(0.5, 0.02))
+    plt.suptitle("Cholesky Factor of Precision Matrix", fontsize=20)
     plt.tight_layout(rect=[0, 0.05, 1, 0.95])
     plt.show()
 
@@ -131,8 +171,22 @@ def recover_covariance_matrices(latent_samples_sorted):
     return v_latent_to_sigma(latent_samples_sorted)
 
 
+def recover_covariance_matrix(latent_samples):
+    """Map latent Cholesky-of-precision draws back to a covariance matrix
+    (single-component model - one fewer axis than recover_covariance_matrices)."""
+    bijector_tril = tfb.FillScaleTriL()
+
+    def latent_to_sigma(latent_vec):
+        L = bijector_tril.forward(latent_vec)
+        precision = L @ L.T
+        return jnp.linalg.inv(precision)
+
+    v_latent_to_sigma = jax.vmap(jax.vmap(latent_to_sigma))
+    return v_latent_to_sigma(latent_samples)
+
+
 def plot_final_covariance_complete(samples, true_matrix=None,
-                                   empirical_matrix=None, component_idx=0):
+                                   empirical_matrix=None, component_idx=0, title=None):
     n_dim = samples.shape[-1]
     fig, axes = plt.subplots(n_dim, n_dim, figsize=(18, 16))
     if n_dim == 1:
@@ -191,7 +245,7 @@ def plot_final_covariance_complete(samples, true_matrix=None,
 
     fig.legend(handles=legend_elements, loc="upper right",
                bbox_to_anchor=(0.9, 0.9), fontsize=14, frameon=True)
-    plt.suptitle(f"Posterior Σ_k - Component {component_idx}", fontsize=24, y=0.98)
+    plt.suptitle(title or f"Posterior Σ_k - Component {component_idx}", fontsize=24, y=0.98)
     plt.subplots_adjust(hspace=0.6, wspace=0.2)
     plt.show()
 
@@ -248,6 +302,25 @@ def summarize_mu_k(mu_samples, K, P, param_names, true_mu=None, K_true=None):
         display(df.round(4).set_index("Parameter"))
 
 
+def summarize_mu(mu_samples, P, param_names, true_mu=None):
+    """Summarise the posterior population mean mu (single-component model -
+    no component axis, so no assignment matching is needed)."""
+    mu_flat = mu_samples.reshape(-1, P)
+    post_mu_mean = mu_flat.mean(axis=0)
+
+    df = pd.DataFrame({
+        "Parameter":      param_names,
+        "Posterior_Mean": post_mu_mean,
+        "Posterior_Std":  mu_flat.std(axis=0),
+    })
+    if true_mu is not None:
+        df.insert(1, "True_Value", true_mu)
+        df["Diff_Abs"] = np.abs(true_mu - df["Posterior_Mean"])
+
+    print("\n=== mu: Posterior Summary ===")
+    display(df.round(4).set_index("Parameter"))
+
+
 def plot_mu_k_diagnostics(mu_samples, K, P, param_names, n_lags=30):
     """Goose-style diagnostics (trace, distribution, ACF) for each mu_k[k, p]."""
     n_chains = mu_samples.shape[0]
@@ -286,6 +359,46 @@ def plot_mu_k_diagnostics(mu_samples, K, P, param_names, n_lags=30):
             ax_acf.set_ylim(-0.1, 1.05)
             ax_acf.grid(True)
             plt.show()
+
+
+def plot_mu_diagnostics(mu_samples, P, param_names, n_lags=30):
+    """Goose-style diagnostics (trace, distribution, ACF) for each mu[p]
+    (single-component model - no component loop)."""
+    n_chains = mu_samples.shape[0]
+    for p in range(P):
+        fig = plt.figure(figsize=(12, 7))
+        fig.suptitle(f"mu[{param_names[p]}]", fontsize=14, y=0.95)
+        gs_layout = gridspec.GridSpec(2, 2, height_ratios=[1.2, 1], hspace=0.3, wspace=0.2)
+
+        ax_trace = fig.add_subplot(gs_layout[0, :])
+        for chain in range(n_chains):
+            ax_trace.plot(mu_samples[chain, :, p], label=f"{chain}")
+        ax_trace.set_xlabel("Iteration")
+        ax_trace.set_ylabel("Value")
+        ax_trace.grid(True, alpha=1)
+        ax_trace.legend(title="Chain", loc="center left",
+                        bbox_to_anchor=(1.02, 0.5), frameon=False)
+
+        ax_dens = fig.add_subplot(gs_layout[1, 0])
+        all_draws = mu_samples[:, :, p].reshape(-1)
+        ci_low, ci_high = np.percentile(all_draws, [2.5, 97.5])
+        for chain in range(n_chains):
+            sns.kdeplot(mu_samples[chain, :, p], ax=ax_dens, fill=False)
+        ax_dens.axvline(ci_low, color="black", linestyle=":", lw=1.2, label="95% CI")
+        ax_dens.axvline(ci_high, color="black", linestyle=":", lw=1.2)
+        ax_dens.set_xlabel("Value")
+        ax_dens.set_ylabel("Density")
+        ax_dens.set_title(f"95% CI: [{ci_low:.3f}, {ci_high:.3f}]", fontsize=10)
+        ax_dens.grid(True)
+
+        ax_acf = fig.add_subplot(gs_layout[1, 1])
+        for chain in range(n_chains):
+            ax_acf.plot(compute_acf(mu_samples[chain, :, p], nlags=n_lags), alpha=1)
+        ax_acf.set_xlabel("Lag")
+        ax_acf.set_ylabel("Autocorrelation")
+        ax_acf.set_ylim(-0.1, 1.05)
+        ax_acf.grid(True)
+        plt.show()
 
 
 def generate_delta_summaries(delta_samples, param_names, demo_names, true_delta=None):
