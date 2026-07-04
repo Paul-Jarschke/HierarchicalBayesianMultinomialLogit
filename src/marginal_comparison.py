@@ -35,6 +35,20 @@ References
   check only - it cannot detect multimodality a lone chain never explored (the
   original Gelman & Rubin 1992 rationale for multiple over-dispersed chains), so
   the load-bearing between-chain R-hat comes from the multi-chain runs.
+
+Standard (single-component) model
+----------------------------------
+`load_sampler_standard`/`true_dgp_standard` load the plain (no `_k` suffix, no
+pvec) posterior/DGP keys of the standard HBMNL and package them with a size-1
+component axis and pvec == 1. Every other function in this module (grids,
+`marginal_density`, `mixture_moments`, `density_distances`, `distance_table`,
+the convergence diagnostics) is written generically in terms of K and needs no
+K=1 special-casing - it is reused unchanged. With one component there is no
+label-switching, so unlike the mixture case, comparing samplers' posterior
+distributions of `mu` directly (not just the derived invariant density) is
+also meaningful; that comparison is plotted directly in the notebook rather
+than added here, matching how this module already leaves all plotting to the
+notebook layer.
 """
 
 import json
@@ -73,6 +87,35 @@ def true_dgp_model(raw_data):
     pvec  = np.array(raw_data["TRUE_PVEC"]).ravel()       # (K_true,)
     Sigma = np.array(raw_data["TRUE_SIGMA_K"])            # (K_true, P, P)
     std   = np.sqrt(np.clip(np.diagonal(Sigma, axis1=1, axis2=2), 0.0, None))
+    return {"name": "True DGP",
+            "mu": mu[None, None], "pvec": pvec[None, None],
+            "Sigma": Sigma[None, None], "std": std[None, None], "is_mcmc": False}
+
+
+def load_sampler_standard(results_dir, name):
+    """Load one standard-model (K=1) run's draws, packaged with a size-1
+    component axis and pvec == 1 so the rest of this module (grids,
+    marginal_density, mixture_moments, distances, convergence diagnostics)
+    applies completely unchanged."""
+    rd = pathlib.Path(results_dir)
+    with open(rd / "posterior_raw.pkl", "rb") as f:
+        post = pickle.load(f)
+    mu    = np.asarray(post["mu"])[:, :, None, :]                                # (C,S,1,P)
+    Sigma = analysis._sigma_from_latent(
+        np.asarray(post["sigma_inv_chol_latent"])
+    )[:, :, None, :, :]                                                          # (C,S,1,P,P)
+    std   = np.sqrt(np.clip(np.diagonal(Sigma, axis1=3, axis2=4), 0.0, None))    # (C,S,1,P)
+    pvec  = np.ones(mu.shape[:3])                                                # (C,S,1)
+    return {"name": name, "mu": mu, "pvec": pvec, "Sigma": Sigma, "std": std, "is_mcmc": True}
+
+
+def true_dgp_standard(raw_data):
+    """Ground truth for the standard (K=1) model as a 1-chain, 1-draw, 1-component
+    'model' (for overlay only), in the same shape convention as true_dgp_model."""
+    mu    = np.array(raw_data["TRUE_MU"])[None, :]           # (1, P)
+    Sigma = np.array(raw_data["TRUE_SIGMA"])[None, :, :]     # (1, P, P)
+    std   = np.sqrt(np.clip(np.diagonal(Sigma, axis1=1, axis2=2), 0.0, None))
+    pvec  = np.ones(1)
     return {"name": "True DGP",
             "mu": mu[None, None], "pvec": pvec[None, None],
             "Sigma": Sigma[None, None], "std": std[None, None], "is_mcmc": False}
