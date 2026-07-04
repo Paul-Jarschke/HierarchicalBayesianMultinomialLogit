@@ -46,6 +46,9 @@ NOTEBOOKS = {
     "full_marginal_comparison": (
         "full_marginal_comparison_template.ipynb", "full_marginal_comparison.ipynb", "k_comp",
     ),
+    "standard_model_comparison": (
+        "standard_model_comparison_template.ipynb", "model_comparison.ipynb", "k_comp",
+    ),
 }
 
 
