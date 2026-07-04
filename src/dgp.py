@@ -161,7 +161,7 @@ def generate_mixture_simulated_data(
 
 
 def generate_standard_simulated_data(n_units=300, n_obs=50, n_alts=4,
-                                      n_params=None, n_demos=1, seed=42):
+                                      n_params=None, n_demos=2, seed=42):
     """
     Simulate data for the STANDARD (one-normal-component, no mixture) Bayesian
     Hierarchical Multinomial Logit model, Rossi (2006) §5.4:
