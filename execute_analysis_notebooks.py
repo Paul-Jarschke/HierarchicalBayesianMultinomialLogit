@@ -38,7 +38,7 @@ def find_notebooks(exp_root, filter_str=None, name=NOTEBOOK_NAME):
     """Return sorted list of notebooks named <name> anywhere under exp_root.
 
     Works for the per-run notebooks (analysis.ipynb, label_switching.ipynb, which
-    live beside a results/ dir) and the x_comp-level marginal_comparison.ipynb
+    live beside a results/ dir) and the x_comp-level full_marginal_comparison.ipynb
     alike - each is executed with its own folder as cwd so it self-resolves."""
     notebooks = sorted(exp_root.rglob(name))
     if filter_str:

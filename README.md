@@ -78,7 +78,7 @@ HierarchicalBayesianMNL/
 ├── run_all_experiments.py              # batch orchestrator, all samplers incl. bayesm (--samplers selects which)
 ├── analysis_template.ipynb             # per-run diagnostics / recovery notebook
 ├── label_switching_template.ipynb      # per-run ECR.iterative.1 relabeling notebook
-├── marginal_comparison_template.ipynb  # per-<k>_comp marginal-density comparison notebook
+├── full_marginal_comparison_template.ipynb  # per-<k>_comp marginal-density comparison notebook
 ├── distribute_notebooks.py             # copies templates -> <run>/ or <k>_comp/ (--which selects which)
 ├── execute_analysis_notebooks.py       # runs notebooks in-place via nbconvert (--name selects which)
 │
@@ -97,7 +97,7 @@ HierarchicalBayesianMNL/
 │   ├── experiment_configs.py           # single source of truth for all scenarios
 │   └── {1_chain, 2_chains}/            # by chain count
 │       └── {1,2,3,5}_comp/             # by true component count
-│           ├── marginal_comparison.ipynb   # cross-sampler comparison (one per <k>_comp)
+│           ├── full_marginal_comparison.ipynb  # cross-sampler comparison (one per <k>_comp)
 │           └── {NUTS, HMC, bayesm}/    # by sampler
 │               └── <run>/              # e.g. 5comp_equal_K5_seed42/
 │                   ├── results/        # all artifacts (posterior_raw.pkl, meta.json, ...)
@@ -118,7 +118,7 @@ HierarchicalBayesianMNL/
 
 Each run folder holds a `results/` directory (all batch output) plus its two
 self-configuring notebooks (`analysis.ipynb`, `label_switching.ipynb`); the
-cross-sampler `marginal_comparison.ipynb` sits one level up, one per `<k>_comp`.
+cross-sampler `full_marginal_comparison.ipynb` sits one level up, one per `<k>_comp`.
 
 ---
 
@@ -459,24 +459,29 @@ uv run python execute_analysis_notebooks.py --name label_switching.ipynb --force
 
 ### Marginal-density comparison notebooks
 
-`marginal_comparison.ipynb` contrasts the NUTS, HMC and bayesm runs that sit side
-by side, so **one notebook is placed per `<chains>/<k>_comp/` folder** (above the
-sampler folders), not per run. It computes the marginal posterior densities of
+`full_marginal_comparison.ipynb` contrasts the NUTS, HMC and bayesm runs that sit
+side by side, so **one notebook is placed per `<chains>/<k>_comp/` folder** (above
+the sampler folders), not per run. It computes the marginal posterior densities of
 `beta` (Rossi Eq. 5.5.19), the mixture moments (Eq. 5.5.2), and the distance of
 **every sampler's marginal to the True DGP marginal** (never sampler-vs-sampler):
 Hellinger, KL(model‖true), Jensen-Shannon, total-variation and Wasserstein-1. The
 logic lives in `src/marginal_comparison.py`; the template is
-`marginal_comparison_template.ipynb`.
+`full_marginal_comparison_template.ipynb`.
 
 Every quantity here is **label-invariant** (a per-draw permutation of components
 leaves it unchanged), so relabeling/ECR is unnecessary and would give identical
-results. Three deliberate choices:
+results. Methodological choices:
 
-- **Grids** are anchored to the fitted models' live-component support (the per-draw
-  top-`K_TRUE` components, union over samplers), *not* to the true DGP - the latter
-  clips the tails/lobes and is circular. The True DGP is an overlay only.
+- **Grids**: every comparison runs on two grids per parameter - the **full,
+  unbounded envelope** over every component of every sampler plus the True DGP
+  (`build_grids_full`: nothing excluded, but diffuse surplus components can
+  stretch it widely) and a **Chebyshev-filtered window** clipped to each model's
+  own aggregate mixture `mean ± 5·std` (`build_grids_chebyshev`: at least 96% of
+  each model's marginal mass is guaranteed inside, for any distribution with
+  finite variance). The True DGP enters the envelope but stays an overlay in the
+  plots.
 - **Convergence** uses `arviz` **rank-normalized split-R̂** and ESS on the real
-  `(chains, draws)` invariant series, not on a flattened single chain.
+  `(chains, draws)` invariant series.
 - For **1-chain runs**, the single chain is split into halves to give a valid
   **split-R̂** - reported as a *within-chain* check only. This is the standard
   fallback (Stan computes split-R̂ by default; even one chain yields a valid value
@@ -495,18 +500,18 @@ It is distributed via the shared distributor's `--which` flag and run via the
 shared runner's `--name` flag:
 
 ```bash
-# Distribute marginal_comparison.ipynb into every <k>_comp folder
-uv run python distribute_notebooks.py --which marginal_comparison
-uv run python distribute_notebooks.py --which marginal_comparison --force
-uv run python distribute_notebooks.py --which marginal_comparison --dry-run
+# Distribute full_marginal_comparison.ipynb into every <k>_comp folder
+uv run python distribute_notebooks.py --which full_marginal_comparison
+uv run python distribute_notebooks.py --which full_marginal_comparison --force
+uv run python distribute_notebooks.py --which full_marginal_comparison --dry-run
 
 # Run all marginal-comparison notebooks (skips already-executed; --force to re-run)
-uv run python execute_analysis_notebooks.py --name marginal_comparison.ipynb --timeout 1200
-uv run python execute_analysis_notebooks.py --name marginal_comparison.ipynb --force --timeout 1200
+uv run python execute_analysis_notebooks.py --name full_marginal_comparison.ipynb --timeout 1200
+uv run python execute_analysis_notebooks.py --name full_marginal_comparison.ipynb --force --timeout 1200
 
 # Full refresh from the template, then run all
-uv run python distribute_notebooks.py --which marginal_comparison --force
-uv run python execute_analysis_notebooks.py --name marginal_comparison.ipynb --force --timeout 1200
+uv run python distribute_notebooks.py --which full_marginal_comparison --force
+uv run python execute_analysis_notebooks.py --name full_marginal_comparison.ipynb --force --timeout 1200
 ```
 
 ---
