@@ -12,8 +12,12 @@ Methodology
 1. Grids are anchored to the FITTED models' own support (union over samplers,
    wide); the true DGP is an overlay only, since anchoring the grid to the
    truth would clip the tails/lobes Rossi highlights and be circular.
-2. Convergence is assessed with arviz `rhat`/`ess` (rank-normalised
-   split-R-hat) on the REAL (chains, draws) invariant series.
+2. Convergence is assessed on the REAL (chains, draws) label-invariant series:
+   arviz rank-normalised split-R-hat/ESS for scalar series, plus two reductions
+   of the curve-valued marginal chain itself - `curve_diagnostics` (ONE R-hat
+   and ONE ESS per marginal: Brooks-Gelman multivariate PSRF, Vats-Flegal-Jones
+   multivariate ESS) and `functional_diagnostics` (Goose-identical arviz calls
+   on grid-free scalar functionals of each per-draw marginal).
 3. The density-support mask uses the INVARIANT marginal (per-draw then
    average); slot-wise posterior means would mix components under label
    switching.
@@ -32,6 +36,14 @@ References
   check only - it cannot detect multimodality a lone chain never explored (the
   original Gelman & Rubin 1992 rationale for multiple over-dispersed chains), so
   the load-bearing between-chain R-hat comes from the multi-chain runs.
+- Brooks & Gelman (1998), "General methods for monitoring convergence of
+  iterative simulations", JCGS 7(4):434-455 - the multivariate PSRF (the exact
+  maximum split-R-hat over all linear functionals of a vector/curve, via one
+  generalized eigenvalue) used by `curve_diagnostics`.
+- Vats, Flegal & Jones (2019), "Multivariate output analysis for Markov chain
+  Monte Carlo", Biometrika 106(2):321-337 - the multivariate ESS
+  N*(det Lambda / det Sigma)^(1/p) with batch-means Sigma, used by
+  `curve_diagnostics`.
 
 Standard (single-component) model
 ----------------------------------
@@ -52,6 +64,7 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 import arviz as az
+from scipy.special import ndtr
 from scipy.stats import norm, wasserstein_distance
 
 from src import analysis
@@ -357,6 +370,197 @@ def density_series_diagnostics(model, grids, param_names, n_eval=40, density_thr
                      "min_ESS": float(np.min(ess_vals)), "mean_ESS": float(np.mean(ess_vals)),
                      "max_Rhat": float(np.max(rhat_vals)), "mean_Rhat": float(np.mean(rhat_vals))})
     return pd.DataFrame(rows).set_index("param")
+
+
+# --------------------------------------------------------------------------- #
+# Convergence of the marginals themselves - two single-number reductions
+# --------------------------------------------------------------------------- #
+# Diagnosed object: the PER-DRAW marginal density of parameter j,
+#     d_j^{(c,s)}(x) = sum_k pvec_k^{(c,s)} N(x ; mu_kj^{(c,s)}, sd_kj^{(c,s)})
+# (the summand of Rossi Eq. 5.5.19) - one label-invariant curve per MCMC draw.
+# (A) `curve_diagnostics`  - ONE R-hat and ONE ESS per marginal, via multivariate
+#     diagnostics of the discretized curve (Brooks-Gelman 1998 MPSRF; Vats-
+#     Flegal-Jones 2019 multivariate ESS). Invariant to nonsingular linear
+#     re-encodings of the curve, so only the grid's SPAN matters.
+# (B) `functional_diagnostics` - Goose-identical scalars: az.rhat / az.ess (the
+#     exact calls in liesel.goose.summary_m) on grid-free closed-form
+#     functionals of each draw's marginal (mean, sd, quantiles).
+def _split_halves(F):
+    """(C, S, m) -> (2C, S//2, m): split each chain in half (Vehtari et al. 2021),
+    so 1-chain runs give a within-chain check like the scalar diagnostics."""
+    h = F.shape[1] // 2
+    return np.concatenate([F[:, :h], F[:, h:2 * h]], axis=0)
+
+
+def _project_curves(F2, rel_tol):
+    """Project split-chain curves (M, n, m) onto the principal subspace of the
+    pooled draw covariance -> scores (M, n, r). Nearby grid points are nearly
+    collinear, making the raw m-dim covariances numerically singular; the
+    diagnostics are invariant under nonsingular linear maps, so dropping only
+    directions with eigenvalue <= rel_tol * largest changes conditioning, not
+    the result."""
+    M, n, m = F2.shape
+    X = F2.reshape(M * n, m)
+    Xc = X - X.mean(axis=0)
+    _, s, Vt = np.linalg.svd(Xc, full_matrices=False)
+    lam = (s ** 2) / max(M * n - 1, 1)
+    if lam.size == 0 or lam[0] <= 0.0:                 # constant curves
+        return Xc.reshape(M, n, m)[:, :, :1]
+    r = max(int(np.sum(lam > lam[0] * rel_tol)), 1)
+    return (Xc @ Vt[:r].T).reshape(M, n, r)
+
+
+def _mpsrf_from_scores(Y):
+    """Brooks-Gelman multivariate PSRF of score chains (M, n, r), sqrt scale:
+    sqrt((n-1)/n + ((M+1)/M) * lambda_max(W^{-1} B/n))."""
+    M, n, r = Y.shape
+    means = Y.mean(axis=1)                                     # (M, r)
+    dev = means - means.mean(axis=0)
+    Bn = (dev.T @ dev) / (M - 1)                               # B/n
+    Yc = Y - means[:, None, :]
+    W = np.einsum("cnp,cnq->pq", Yc, Yc) / (M * (n - 1))
+    W = W + np.eye(r) * (np.trace(W) / r) * 1e-12              # conditioning floor
+    L = np.linalg.cholesky(W)
+    T = np.linalg.solve(L, Bn)
+    T = np.linalg.solve(L, T.T)                                # L^-1 (B/n) L^-T
+    lam1 = max(float(np.linalg.eigvalsh(0.5 * (T + T.T))[-1]), 0.0)
+    return float(np.sqrt((n - 1) / n + (M + 1) / M * lam1))
+
+
+def _mess_from_scores(Y, batch_size=None):
+    """Vats-Flegal-Jones multivariate ESS of score chains (M, n, r):
+    mESS = N * (det Lambda / det Sigma)^(1/r) - a geometric mean over the curve's
+    principal directions, so one badly-mixing direction is diluted by the others.
+    ESS_min = N * lambda_min(pencil(Lambda, Sigma)) is therefore also returned:
+    the exact minimum of N * a'Lambda a / a'Sigma a over all linear functionals
+    a - the worst-case companion to the MPSRF maximum. Sigma via grand-centred
+    replicated batch means (batch size ~ sqrt(n)), so chains sitting in
+    different modes inflate Sigma and deflate both numbers. Returns
+    (mESS, ESS_min, r_used); r is capped at the batch-mean degrees of freedom
+    (scores are PCA-ordered, leading ones kept)."""
+    M, n, r = Y.shape
+    if batch_size is None:
+        batch_size = max(int(np.floor(np.sqrt(n))), 2)
+    b = min(int(batch_size), n)
+    a = n // b
+    if a < 2:
+        return float("nan"), float("nan"), r
+    r_cap = M * a - 1
+    if r > r_cap:
+        Y = Y[:, :, :r_cap]
+        r = r_cap
+    N = M * n
+    X = Y.reshape(N, r)
+    grand = X.mean(axis=0)
+    Xc = X - grand
+    Lam = (Xc.T @ Xc) / (N - 1)
+    bm = Y[:, :a * b].reshape(M, a, b, r).mean(axis=2) - grand         # (M, a, r)
+    Sig = b * np.einsum("cap,caq->pq", bm, bm) / (M * a - 1)
+    jit_L = np.eye(r) * (np.trace(Lam) / r) * 1e-12
+    jit_S = np.eye(r) * (np.trace(Sig) / r) * 1e-12
+    Lam, Sig = Lam + jit_L, Sig + jit_S
+    _, ld_L = np.linalg.slogdet(Lam)
+    _, ld_S = np.linalg.slogdet(Sig)
+    mess = float(N * np.exp((ld_L - ld_S) / r))
+    Ls = np.linalg.cholesky(Sig)
+    T = np.linalg.solve(Ls, Lam)
+    T = np.linalg.solve(Ls, T.T)                                       # Ls^-1 Lam Ls^-T
+    ess_min = float(N * max(np.linalg.eigvalsh(0.5 * (T + T.T))[0], 0.0))
+    return mess, ess_min, r
+
+
+def mpsrf(F, rel_tol=1e-8):
+    """ONE split-R-hat for a curve-valued chain F (chains, draws, n_points):
+    Brooks & Gelman's (1998) multivariate PSRF - the exact maximum split-R-hat
+    over ALL linear functionals of the curve (every point evaluation, interval
+    probability and weighted mean), via one generalized eigenvalue; NOT an
+    aggregation of pointwise R-hats. sqrt scale, reads like arviz R-hat.
+    Invariant to nonsingular linear re-encodings of the curve."""
+    Y = _project_curves(_split_halves(np.asarray(F, dtype=float)), rel_tol)
+    return _mpsrf_from_scores(Y)
+
+
+def multivariate_ess(F, rel_tol=1e-8, batch_size=None):
+    """ONE ESS for a curve-valued chain F (chains, draws, n_points): Vats,
+    Flegal & Jones (2019). Interpretation: the number of INDEPENDENT draws of
+    the curve whose large-sample confidence ellipsoid for the mean curve has
+    the same volume as the chain's. A geometric mean across directions - see
+    `curve_diagnostics`'s ESS_min column for the worst-case companion. Only
+    meaningful when mpsrf() is ~1."""
+    Y = _project_curves(_split_halves(np.asarray(F, dtype=float)), rel_tol)
+    ess, _, _ = _mess_from_scores(Y, batch_size)
+    return ess
+
+
+def curve_diagnostics(model, grids, param_names, n_eval=64,
+                      rel_tol=1e-8, batch_size=None):
+    """(A) ONE R-hat and ONE ESS per marginal: multivariate diagnostics of the
+    per-draw marginal density curves. No pointwise aggregation and no density
+    mask - low-density grid points carry ~zero variance and are absorbed by the
+    principal-subspace projection.
+
+    Columns: Rhat_max (`mpsrf` - max split-R-hat over all linear functionals),
+    mESS (`multivariate_ess` - volume-based, a geometric mean across directions),
+    ESS_min (worst-case ESS over all linear functionals - the min companion to
+    Rhat_max's max), rank (effective dimension the curves occupy), draws (total
+    unsplit draws). Values depend on the grid only through its span, not its
+    resolution."""
+    mu, std, pvec = model["mu"], model["std"], model["pvec"]
+    C, S = mu.shape[:2]
+    rows = []
+    for j, pj in enumerate(param_names):
+        x = np.linspace(grids[j][0], grids[j][-1], n_eval)
+        pdf = norm.pdf(x[None, None, None, :],
+                       loc=mu[:, :, :, j, None], scale=std[:, :, :, j, None] + 1e-8)
+        F = np.sum(pvec[:, :, :, None] * pdf, axis=2)                 # (C, S, n_eval)
+        Y = _project_curves(_split_halves(F), rel_tol)
+        ess, ess_min, _ = _mess_from_scores(Y, batch_size)
+        rows.append({"param": pj, "Rhat_max": _mpsrf_from_scores(Y),
+                     "mESS": ess, "ESS_min": ess_min,
+                     "rank": int(Y.shape[2]), "draws": int(C * S)})
+    return pd.DataFrame(rows).set_index("param")
+
+
+def _mixture_quantiles(mu_j, sd_j, pvec, alphas, iters=50):
+    """Per-draw quantiles of the mixture marginal by bisection on its CDF
+    G(q) = sum_k pvec_k Phi((q - mu_k)/sd_k). mu_j, sd_j, pvec: (C, S, K).
+    Returns (len(alphas), C, S)."""
+    lo = (mu_j - 8.0 * sd_j).min(axis=2)
+    hi = (mu_j + 8.0 * sd_j).max(axis=2)
+    out = np.empty((len(alphas),) + lo.shape)
+    for i, alpha in enumerate(alphas):
+        a, b = lo.copy(), hi.copy()
+        for _ in range(iters):
+            mid = 0.5 * (a + b)
+            cdf = np.sum(pvec * ndtr((mid[..., None] - mu_j) / sd_j), axis=2)
+            hi_side = cdf > alpha
+            b = np.where(hi_side, mid, b)
+            a = np.where(hi_side, a, mid)
+        out[i] = 0.5 * (a + b)
+    return out
+
+
+def functional_diagnostics(model, param_names, quantiles=(0.05, 0.5, 0.95)):
+    """(B) Goose-identical convergence diagnostics for scalar functionals of
+    each per-draw marginal: mean, sd, and the given quantiles. Rhat is az.rhat
+    (rank-normalised split-R-hat) and ESS az.ess bulk/tail - exactly the calls
+    liesel.goose.summary_m makes - so values read like any Goose summary. All
+    functionals are closed-form (mean, sd) or CDF root-finding (quantiles): no
+    grid is involved. 1-chain runs are split into halves (within-chain check)."""
+    mu, std, pvec = model["mu"], model["std"], model["pvec"]
+    rows = []
+    for j, pj in enumerate(param_names):
+        mu_j, sd_j = mu[:, :, :, j], std[:, :, :, j]
+        mean = np.sum(pvec * mu_j, axis=2)
+        var = np.sum(pvec * (sd_j ** 2 + mu_j ** 2), axis=2) - mean ** 2
+        series = {"mean": mean, "sd": np.sqrt(np.clip(var, 0.0, None))}
+        for alpha, q in zip(quantiles, _mixture_quantiles(mu_j, sd_j, pvec, quantiles)):
+            series[f"q{int(round(alpha * 100)):02d}"] = q
+        for name, s in series.items():
+            rows.append({"param": pj, "functional": name,
+                         "Rhat": _rhat(s), "ESS_bulk": _ess(s),
+                         "ESS_tail": float(az.ess(_as_chains(s), method="tail"))})
+    return pd.DataFrame(rows).set_index(["param", "functional"])
 
 
 def moment_series_diagnostics(model, param_names):
