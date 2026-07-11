@@ -1,8 +1,8 @@
 """
 NUTS inference runner for the mixture HBMNL model.
 
-K (the number of model components, K_MODEL) is passed in explicitly so the
-runner never reports a stale value read from data_dict["K"].
+K (the number of model components, K_MODEL) is passed in explicitly; the
+runner never reads data_dict["K"].
 """
 
 import liesel.goose as gs

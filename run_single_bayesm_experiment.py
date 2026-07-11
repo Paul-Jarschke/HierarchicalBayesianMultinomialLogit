@@ -1,6 +1,6 @@
 """
 Run ONE mixture-HBMNL fit with bayesm and persist the SAME artifacts the Liesel
-runner does, so the identical analysis notebook + src/analysis.py work unchanged.
+runner does, so the same analysis notebook + src/analysis.py apply to both.
 
 This is the bayesm counterpart of run_single_experiment.py. It:
   1. invokes run_single_bayesm_experiment.R as a subprocess (pure sampling),

@@ -5,8 +5,8 @@ Mirror of nuts.py, but every block is sampled with a fixed-length HMC kernel
 instead of NUTS. The number of leapfrog integration steps is fixed (default 10)
 rather than chosen dynamically per-step as NUTS does.
 
-K (the number of model components, K_MODEL) is passed in explicitly so the
-runner never reports a stale value read from data_dict["K"].
+K (the number of model components, K_MODEL) is passed in explicitly; the
+runner never reads data_dict["K"].
 """
 
 import liesel.goose as gs

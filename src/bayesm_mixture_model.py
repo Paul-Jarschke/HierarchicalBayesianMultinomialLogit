@@ -77,9 +77,8 @@ def build_bayesm_mixture_hbmnl_model(
     a_mu        : prior precision scaling for the mixture component means.
     dirichlet_a : Dirichlet concentration on pvec. < 1.0 encourages sparse
                   weights (spurious components collapse toward 0), useful when
-                  K_MODEL > K_TRUE; == 1.0 is uniform (uninformative on the
-                  simplex - does not assume overspecification); > 1.0 pulls
-                  toward equal weights.
+                  K_MODEL > K_TRUE; == 1.0 is uniform on the simplex; > 1.0
+                  pulls toward equal weights.
 
     Returns
     -------

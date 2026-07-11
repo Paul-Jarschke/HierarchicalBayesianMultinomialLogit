@@ -10,16 +10,13 @@ permutation of the component triples leaves every quantity here unchanged).
 Methodology
 -----------
 1. Grids are anchored to the FITTED models' own support (union over samplers,
-   wide), NOT to the true DGP +/-4 sigma - the latter clips the tails/lobes Rossi
-   highlights and would be circular. Truth is an overlay only.
-2. Convergence is assessed with arviz `rhat`/`ess` on the REAL (chains, draws)
-   invariant series (rank-normalised split-R-hat across actual chains), not by
-   splitting a single flattened chain into pseudo-chains.
-3. The density-support mask uses the INVARIANT marginal (per-draw then average),
-   never slot-wise posterior means (which mix components under label switching).
-
-The marginal density (Eq. 5.5.19) and mixture moments (Eq. 5.5.2) follow Rossi
-2006 directly.
+   wide); the true DGP is an overlay only, since anchoring the grid to the
+   truth would clip the tails/lobes Rossi highlights and be circular.
+2. Convergence is assessed with arviz `rhat`/`ess` (rank-normalised
+   split-R-hat) on the REAL (chains, draws) invariant series.
+3. The density-support mask uses the INVARIANT marginal (per-draw then
+   average); slot-wise posterior means would mix components under label
+   switching.
 
 References
 ----------
@@ -40,15 +37,11 @@ Standard (single-component) model
 ----------------------------------
 `load_sampler_standard`/`true_dgp_standard` load the plain (no `_k` suffix, no
 pvec) posterior/DGP keys of the standard HBMNL and package them with a size-1
-component axis and pvec == 1. Every other function in this module (grids,
-`marginal_density`, `mixture_moments`, `density_distances`, `distance_table`,
-the convergence diagnostics) is written generically in terms of K and needs no
-K=1 special-casing - it is reused unchanged. With one component there is no
-label-switching, so unlike the mixture case, comparing samplers' posterior
-distributions of `mu` directly (not just the derived invariant density) is
-also meaningful; that comparison is plotted directly in the notebook rather
-than added here, matching how this module already leaves all plotting to the
-notebook layer.
+component axis and pvec == 1; every other function in this module is written
+generically in terms of K and applies as-is. With one component there is no
+label-switching, so samplers' posterior distributions of `mu` can also be
+compared directly (not just via the derived invariant density); that plot,
+like all plotting, lives in the notebook layer.
 """
 
 import json
@@ -175,7 +168,7 @@ def build_grids_full(fitted_models, true_model=None, n_grid=4000, n_sigma=6):
     Caveat: when K_MODEL > K_TRUE the surplus components carry huge prior-driven
     mu/sigma, so this range can be very wide and the real mass occupies few grid
     cells; `n_grid` and `n_sigma` are raised accordingly to keep resolution. This
-    is the deliberate trade-off of the unbounded grid - contrast `build_grids`
+    is the trade-off of the unbounded grid - contrast `build_grids`
     (live-support, trimmed). Truth is included in the envelope but is still an
     overlay in the plots."""
     P = fitted_models[0]["mu"].shape[-1]
@@ -284,10 +277,9 @@ def distance_table(models, true_model, grids, param_names, dens=None, dens_true=
     """Distance of every sampler's marginal to the TRUE DGP marginal, per parameter.
     Samplers are never compared against each other. KL is KL(model || true).
 
-    `dens` (dict: model name -> marginal_density(...)) and `dens_true` may be passed
-    in to reuse densities already computed elsewhere for this (models, grids) pair
-    instead of recomputing them here - the O(R*K*n_grid) cost of `marginal_density`
-    otherwise gets paid again on every call site."""
+    `dens` (dict: model name -> marginal_density(...)) and `dens_true` may be
+    passed in to reuse densities already computed for this (models, grids) pair
+    and skip the O(R*K*n_grid) cost of `marginal_density`."""
     d_true = dens_true if dens_true is not None else marginal_density(true_model, grids)
     rows = []
     for m in models:
@@ -324,11 +316,9 @@ def _ess(series):
 
 def _rhat_ess_batch(series):
     """Vectorized R-hat and ESS over a trailing 'point' dim: series is (C,S,n_points).
-    One az.rhat/az.ess call each (via xarray, which vectorizes elementwise over extra
-    dims) instead of one call per point - arviz pays a fixed ~0.2-0.3s per-call setup
-    cost regardless of data size, so looping az.rhat/az.ess per point (as
-    density_series_diagnostics used to) was the dominant runtime cost, not the
-    marginal-density grid resolution. Returns (rhat (n_points,), ess (n_points,))."""
+    One az.rhat/az.ess call each (via xarray, which vectorizes elementwise over
+    extra dims); arviz has a fixed per-call setup cost, so per-point calls would
+    dominate the runtime. Returns (rhat (n_points,), ess (n_points,))."""
     chains = _as_chains(series)                                  # (C',S,n_points)
     ds = xr.Dataset({"x": xr.DataArray(chains, dims=("chain", "draw", "point"))})
     return az.rhat(ds)["x"].values, az.ess(ds)["x"].values
@@ -340,9 +330,8 @@ def density_series_diagnostics(model, grids, param_names, n_eval=40, density_thr
     not slot-wise means. R-hat/ESS via arviz on the real (C,S) chains, batched
     across all surviving grid points in one call (see `_rhat_ess_batch`).
 
-    `marg` (this model's marginal_density(model, grids) result) may be passed in to
-    reuse a density already computed elsewhere for this (model, grids) pair instead
-    of recomputing it here just to build the mask."""
+    `marg` (this model's marginal_density(model, grids) result) may be passed in
+    to reuse a density already computed for this (model, grids) pair."""
     mu, std, pvec = model["mu"], model["std"], model["pvec"]
     C, S, K, P = mu.shape
     if marg is None:

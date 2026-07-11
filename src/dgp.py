@@ -175,28 +175,28 @@ def generate_standard_simulated_data(n_units=300, n_obs=30, n_alts=4,
     Delta (n_z x p) maps covariates to coefficients; the rows u_i of U are
     iid N(0, V_beta).
 
-    Ground truth is DRAWN, not hardcoded:
+    Ground truth is drawn as:
 
       - Delta intercept row ~ N(0, MU_TRUTH_SD^2), MU_TRUTH_SD = 1.0 — a
-        truth-generating scale chosen so no single term (intercept vs.
-        Delta'z vs. unit noise) dominates simulated utility. Deliberately
-        independent of the model's own diffuse prior constant A_MU = 0.01
-        (Rossi §5.4's "standard diffuse prior settings", A = 0.01 * I):
-        A_MU describes plausible prior *belief* for estimation, not a
-        plausible *true* value to simulate from.
+        truth-generating scale at which no single term (intercept vs.
+        Delta'z vs. unit noise) dominates simulated utility. Independent of
+        the model's diffuse prior constant A_MU = 0.01 (Rossi §5.4's
+        "standard diffuse prior settings", A = 0.01 * I): A_MU describes
+        plausible prior *belief* for estimation, not a plausible *true*
+        value to simulate from.
       - Delta demographic rows ~ N(0, DELTA_TRUTH_SD^2), DELTA_TRUTH_SD = 0.5
       - V_beta diagonal, variances ~ Uniform(0.5, 2.0)
       - Continuous X attributes standardised globally before choice simulation
 
-    The returned dict repackages this into the repo-wide model-facing
-    convention (the Liesel model and the bayesm ncomp = 1 arm both expect a
-    centred Z WITHOUT an intercept column plus a separate population mean):
-    "Z" holds only the centred demographic columns, TRUE_MU (P,) is the
-    intercept row of Delta, TRUE_DELTA (n_demos, P) the demographic rows,
-    TRUE_SIGMA (P, P) is V_beta. Because the demographic columns are centred,
-    the intercept row of Delta IS the population mean of beta — the two
-    parametrizations are identical. There is one component, so no ground-truth
-    key carries a component axis or a _k suffix.
+    The returned dict follows the repo-wide model-facing convention (the
+    Liesel model and the bayesm ncomp = 1 arm both expect a centred Z WITHOUT
+    an intercept column plus a separate population mean): "Z" holds only the
+    centred demographic columns, TRUE_MU (P,) is the intercept row of Delta,
+    TRUE_DELTA (n_demos, P) the demographic rows, TRUE_SIGMA (P, P) is V_beta.
+    Because the demographic columns are centred, the intercept row of Delta IS
+    the population mean of beta — the two parametrizations are identical.
+    There is one component, so no ground-truth key carries a component axis or
+    a _k suffix.
 
     Returns a dict with X, y, Z, unit_idx, dims, and all TRUE_ ground truth.
     """
@@ -224,8 +224,7 @@ def generate_standard_simulated_data(n_units=300, n_obs=30, n_alts=4,
     A_MU = 0.01                # Rossi §5.4 diffuse prior constant (bayesm's Amu);
                                 # recorded for provenance only, not used to draw truth.
     MU_TRUTH_SD    = 1.0        # truth-generating scale of Delta's intercept row (see
-                                # docstring); deliberately decoupled from A_MU's
-                                # diffuse-prior scale.
+                                # docstring); independent of A_MU's diffuse-prior scale.
     DELTA_TRUTH_SD = 0.5        # truth-generating scale of Delta's demographic rows.
 
     Delta_true = np.vstack([

@@ -1,11 +1,11 @@
 """
 Run ONE standard (one-normal-component, no mixture) HBMNL fit and persist the
-same artifacts as the mixture pipeline, so the identical analysis notebooks
-and tooling work unchanged.
+same artifacts as the mixture pipeline, so the same analysis notebooks and
+tooling apply to both.
 
 Samplers:
     nuts / hmc : src.standardmodel (Liesel/Goose), sampled in this process.
-    bayesm     : rhierMnlRwMixture with ncomp = 1, via the existing R bridge
+    bayesm     : rhierMnlRwMixture with ncomp = 1, via the R bridge
                  (run_single_bayesm_experiment.py) as a subprocess. All three
                  samplers fit the identical model (see src/standardmodel.py)
                  on the identical dataset. The bridge's mixture-style output
@@ -127,7 +127,7 @@ def _bayesm_to_plain_keys(outdir: pathlib.Path):
 
 
 def run_bayesm(args, outdir: pathlib.Path) -> int:
-    """rhierMnlRwMixture with ncomp=1 via the existing R bridge subprocess."""
+    """rhierMnlRwMixture with ncomp=1 via the R bridge subprocess."""
     cmd = [
         sys.executable, "-u", str(PROJECT_ROOT / "run_single_bayesm_experiment.py"),
         "--scenario", "standard",

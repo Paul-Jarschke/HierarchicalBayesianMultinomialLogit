@@ -154,12 +154,10 @@ def _niw_conjugate_draw(prng_key, theta, ind, K_comp, n_params, a_mu, nu, V,
                          eye_P, fill_tril):
     """
     One draw of {mu_k, Sigma_k} | ind, theta from their exact bayesm conjugate
-    NIW posterior, via masked one-hot sufficient statistics. Module-level (not
-    a closure) so it is the SINGLE implementation of this formula, shared by
-    the Gibbs sweep's own draw_comps step (this file) and by
-    src.inference.init's data-informed NUTS/HMC initial-value construction --
-    the latter reproduces Rossi's algorithm's first Gibbs draw exactly rather
-    than approximating it, since NUTS/HMC have no Gibbs step of their own.
+    NIW posterior, via masked one-hot sufficient statistics. The single
+    implementation of this formula, shared by the Gibbs sweep's draw_comps
+    step (this file) and by src.inference.init's NUTS/HMC initial-value
+    construction (which reproduces Rossi's first Gibbs draw per chain).
     """
     w1 = jax.nn.one_hot(ind, K_comp, dtype=theta.dtype)               # (n, K)
 
@@ -222,14 +220,12 @@ def run_bayesm_gibbs_inference_mixture_hbmnl(
     the prior hyperparameters are read from model.bayesm_prior so the conjugate
     updates provably match the model's prior.
 
-    Iteration scheme matches run_single_bayesm_experiment.R exactly. bayesm is
-    called with keep=1 there (every raw draw returned), then burn_in is dropped
-    and the remainder thinned by `thin`, both in RAW iteration units - see the
-    comment above `keep_idx` in that script for why this order (not thinning
-    first) is deliberate. This runner reproduces that: the Goose posterior epoch
-    runs UNTHINNED for (r_total - burn_in) raw sweeps (warmup_duration=burn_in
-    discards the first burn_in sweeps exactly as bayesm's manual burn-in slice
-    does), and the thinning is applied afterward with a plain Python stride.
+    Iteration scheme matches run_single_bayesm_experiment.R: bayesm is called
+    with keep=1 there (every raw draw returned), then burn_in is dropped and
+    the remainder thinned by `thin`, both in RAW iteration units. Here the
+    Goose posterior epoch runs UNTHINNED for (r_total - burn_in) raw sweeps
+    (warmup_duration=burn_in plays the role of bayesm's manual burn-in slice),
+    and the thinning is applied afterward with a plain Python stride.
     Posterior sample index j (0-indexed) is raw sweep (burn_in + 1 + j), so
     `[:, ::thin]` keeps j = 0, thin, 2*thin, ... - the same phase as R's
     `seq(burn_in + 1, r_total, by = thin)`.
