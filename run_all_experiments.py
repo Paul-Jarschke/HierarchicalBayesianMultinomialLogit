@@ -1,6 +1,6 @@
 """
 Orchestrate a batch of mixture-HBMNL experiments overnight, across every
-sampler: nuts, hmc, iwls, bayesm_gibbs (Liesel, via run_single_experiment.py)
+sampler: nuts, hmc, bayesm_gibbs (Liesel, via run_single_experiment.py)
 and bayesm (R, via run_single_bayesm_experiment.py -> rhierMnlRwMixture).
 
 Runs every experiment in the grid as a SEPARATE SUBPROCESS (one process per
@@ -62,7 +62,7 @@ except Exception:
     ]
 
 CHAINS_GRID  = [1, 2, 4]
-SAMPLER_GRID = ["hmc", "nuts"]          # add "iwls" later maybe
+SAMPLER_GRID = ["hmc", "nuts"]
 
 # Folder name per sampler inside <k>_comp/. "bayesm_gibbs" is the Liesel
 # replication of bayesm's own sampler, so its runs live in "replication"
@@ -70,12 +70,11 @@ SAMPLER_GRID = ["hmc", "nuts"]          # add "iwls" later maybe
 SAMPLER_FOLDER = {
     "hmc":          "HMC",
     "nuts":         "NUTS",
-    "iwls":         "IWLS",
     "bayesm_gibbs": "replication",
     "bayesm":       "BAYESM",
 }
 
-# Chain lenghts (edit to taste) — for nuts/hmc/iwls
+# Chain lengths (edit to taste) — for nuts/hmc
 WARMUP    = 2000
 POSTERIOR = 10000
 SEED      = 42
@@ -133,9 +132,8 @@ def build_grid(strategy: str, samplers: list[str] | None = None,
     # the scenario/sampler order within each chain count.
     _SAMPLER_ORDER = {"hmc": 0,
                       "nuts": 1,
-                      "iwls": 2,
-                      "bayesm_gibbs": 3,
-                      "bayesm": 4}
+                      "bayesm_gibbs": 2,
+                      "bayesm": 3}
     grid.sort(key=lambda e: (_SAMPLER_ORDER[e["sampler"]], e["chains"]))
     return grid
 
@@ -153,7 +151,7 @@ def is_done(outdir: pathlib.Path) -> bool:
 
 def run_one(exp: dict, log_path: pathlib.Path) -> tuple[str, float]:
     """Launch the appropriate single-experiment runner as a subprocess (Liesel
-    for nuts/hmc/iwls/bayesm_gibbs, the R bridge for bayesm). Returns (status, secs)."""
+    for nuts/hmc/bayesm_gibbs, the R bridge for bayesm). Returns (status, secs)."""
     if exp["sampler"] == "bayesm":
         cmd = [
             sys.executable, "-u", str(BAYESM_RUNNER),
@@ -208,7 +206,7 @@ def main():
                     help="fixed5: fit K_MODEL=5 everywhere; known: fit K_MODEL=K_TRUE")
     ap.add_argument("--samplers", default=",".join(SAMPLER_GRID),
                     help="Comma-separated sampler list "
-                         "(nuts,hmc,iwls,bayesm_gibbs,bayesm). Default: current grid.")
+                         "(nuts,hmc,bayesm_gibbs,bayesm). Default: current grid.")
     ap.add_argument("--chains", default=",".join(str(c) for c in CHAINS_GRID),
                     help="Comma-separated chain counts to run, e.g. '1,2'. "
                          "Default: current grid (1,2,4). Use this to exclude 4 "
@@ -218,7 +216,7 @@ def main():
     args = ap.parse_args()
 
     samplers = [s.strip() for s in args.samplers.split(",") if s.strip()]
-    valid = {"nuts", "hmc", "iwls", "bayesm_gibbs", "bayesm"}
+    valid = {"nuts", "hmc", "bayesm_gibbs", "bayesm"}
     unknown = set(samplers) - valid
     if unknown:
         ap.error(f"Unknown sampler(s): {sorted(unknown)}; valid: {sorted(valid)}")

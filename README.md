@@ -4,8 +4,7 @@ A simulation study comparing two Bayesian HBMNL mixture-of-normals implementatio
 
 - **bayesm** (R) - Gibbs sampler with a random-walk Metropolis step for the choice
   coefficients (`rhierMnlRwMixture`, Rossi 2006)
-- **Liesel / Goose** (Python) - gradient-based MCMC: NUTS, fixed-step HMC, and a
-  mixed IWLS sampler
+- **Liesel / Goose** (Python) - gradient-based MCMC: NUTS and fixed-step HMC
 
 The two implementations are run on identical datasets so that differences in
 posterior recovery and mixing can be attributed to the samplers rather than the
@@ -114,8 +113,7 @@ HierarchicalBayesianMNL/
     └── inference/
         ├── __init__.py
         ├── nuts.py                     # adaptive NUTS runner
-        ├── hmc.py                      # fixed-step HMC runner
-        └── iwls.py                     # mixed IWLS + NUTS runner (experimental)
+        └── hmc.py                      # fixed-step HMC runner
 ```
 
 Each run folder holds a `results/` directory (all batch output) plus its two
@@ -228,11 +226,10 @@ near the simplex corners and encourages spurious components to shrink.
 
 ### Samplers
 
-| Sampler | Module                  | Strategy                                                                                            |
-| ------- | ----------------------- | --------------------------------------------------------------------------------------------------- |
-| NUTS    | `src/inference/nuts.py` | Adaptive trajectory length; one NUTS kernel per block.                                              |
-| HMC     | `src/inference/hmc.py`  | Fixed-length leapfrog (default 10 integration steps) per block.                                     |
-| IWLS    | `src/inference/iwls.py` | Mixed: IWLS on coefficient blocks (μₖ, Δ, βᵢ), NUTS on the simplex / Cholesky blocks. Experimental. |
+| Sampler | Module                  | Strategy                                                        |
+| ------- | ----------------------- | --------------------------------------------------------------- |
+| NUTS    | `src/inference/nuts.py` | Adaptive trajectory length; one NUTS kernel per block.          |
+| HMC     | `src/inference/hmc.py`  | Fixed-length leapfrog (default 10 integration steps) per block. |
 
 All runners sample five blocks separately - `pvec_latent`,
 `sigma_inv_chol_k_latent`, `mu_k`, `Delta` (if demographics present), `beta_i` - and
@@ -259,7 +256,7 @@ uv run python run_single_experiment.py \
 uv run python run_single_experiment.py \
     --scenario 5comp_equal \        # name from experiment_configs.SCENARIOS
     --k-model 5 \                   # K_MODEL - number of components the model fits
-    --sampler nuts \                # nuts | hmc | iwls
+    --sampler nuts \                # nuts | hmc | bayesm_gibbs
     --chains 1 \                    # number of MCMC chains
     --warmup 2000 \                 # warmup / adaptation draws per chain (min ~200)
     --posterior 10000 \             # posterior draws per chain to keep
@@ -315,8 +312,7 @@ Behaviour:
   `batch_logs/batch_<stamp>.log` is the master log.
 
 Edit the grid, MCMC budget (`WARMUP`, `POSTERIOR`), priors, and `TIMEOUT_S` at the
-top of `run_all_experiments.py`. Add `"iwls"` to `SAMPLER_GRID` once that sampler is
-finalised.
+top of `run_all_experiments.py`.
 
 #### Overnight on a laptop
 

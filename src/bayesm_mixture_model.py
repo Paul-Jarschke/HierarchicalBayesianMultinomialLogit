@@ -25,7 +25,7 @@ Prior structure (identical to the marginalised builder and to bayesm defaults):
     Dirichlet: pvec           ~ Dir(dirichlet_a)
 
 NOTE: ind is a discrete parameter. It can only be updated by a Gibbs kernel —
-gradient-based kernels (NUTS/HMC/IWLS) must never own the "ind" position key.
+gradient-based kernels (NUTS/HMC) must never own the "ind" position key.
 """
 
 import numpy as np

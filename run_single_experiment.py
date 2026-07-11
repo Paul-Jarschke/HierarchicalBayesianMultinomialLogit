@@ -99,7 +99,7 @@ def parse_args():
     ap.add_argument("--scenario", required=True)
     ap.add_argument("--k-model", type=int, required=True)
     ap.add_argument("--sampler", required=True,
-                    choices=["nuts", "hmc", "iwls", "bayesm_gibbs"])
+                    choices=["nuts", "hmc", "bayesm_gibbs"])
     ap.add_argument("--chains", type=int, default=1)
     ap.add_argument("--warmup", type=int, default=2000)
     ap.add_argument("--posterior", type=int, default=10000)
@@ -250,13 +250,6 @@ def main():
                 chains=args.chains, warmup=args.warmup,
                 posterior=args.posterior, seed=args.seed,
                 use_informed_init=not args.no_informed_init,
-            )
-        elif args.sampler == "iwls":
-            from src.inference.iwls import run_iwls_inference_mixture_hbmnl
-            mcmc_results, posterior_samples = run_iwls_inference_mixture_hbmnl(
-                model=model, data_dict=choice_data, K=args.k_model,
-                chains=args.chains, warmup=args.warmup,
-                posterior=args.posterior, seed=args.seed,
             )
         elif args.sampler == "bayesm_gibbs":
             from src.inference.bayesm_gibbs import run_bayesm_gibbs_inference_mixture_hbmnl
