@@ -1,56 +1,25 @@
 """
 ECR.iterative.1 relabeling for the mixture HBMNL posterior (Papastamoulis &
 Iliopoulos 2010; Papastamoulis 2016, JSS - the `label.switching` R package).
+Returns a relabeled COPY of the posterior plus a report; input draws are never
+mutated.
 
-Returns a relabeled COPY of the posterior plus a report; the input draws are
-never mutated.
+Method: pivot-free iterative ECR on HARD allocations z[t,i] = argmax_k r_{tik}.
+Liesel marginalizes the allocations, so responsibilities are reconstructed
+post-hoc: r_{tik} ∝ pvec_{tk} * N(beta_{ti}; mu_{tk} + Z_i @ Delta_t, Sigma_{tk})
+- the Z@Delta term is required (Rossi Eq. 5.5.19). The same reconstruction
+serves NUTS, HMC and bayesm (bayesm's own sampled z is ignored). Hard
+allocations tolerate the reconstruction noise better than the soft
+probabilities `ecr.iterative.2` needs, and `ecr`'s fixed pivot is not robust
+across independently-collapsed chains. Empty components under K_MODEL > K_TRUE
+claim no observations and need no special casing.
 
-Why ECR.iterative.1 (of the three ECR variants in label.switching)
-------------------------------------------------------------------
-`label.switching` offers `ecr` (needs a pivot), `ecr.iterative.1` (pivot-free,
-uses the hard allocation matrix z) and `ecr.iterative.2` (pivot-free, uses the
-m x n x K classification-probability array p).
+Relabeling removes PERMUTATION ambiguity only, not genuine MULTIMODALITY
+(chains in different partition modes); the report distinguishes the two.
+Load-bearing inference stays on the label-invariant functionals
+(analysis.invariant_convergence_summary), which relabeling leaves unchanged.
 
-  * `ecr`: its pivot allocation is not robust when independent chains have
-    collapsed to different, incompatible pivots.
-  * `ecr.iterative.1` (used here): pivot-free, and it works on the HARD
-    allocations z = argmax_k r_{ik}. Liesel marginalizes the allocations, so
-    responsibilities must be RECONSTRUCTED post-hoc; hard allocations are far
-    more robust to the noise in that reconstruction than the full soft p that
-    `ecr.iterative.2` consumes. It is also the simplest of the three.
-  * Overspecified K_MODEL > K_TRUE needs no special casing: collapsed (empty)
-    components claim essentially no observations, so they never compete for a
-    real component's slot.
-
-The algorithm (faithful to the package)
----------------------------------------
-Inputs: z, an m x n matrix of allocations z[t,i] in {0..K-1}. Maintain a
-per-iteration relabel map tau_t : {0..K-1} -> {0..K-1} (raw label -> reference
-label), initialised to the identity. Iterate to a fixed point:
-
-  1. q[i,k] = (1/m) * sum_t 1{ tau_t(z[t,i]) = k }            (running reference)
-  2. for each iteration t, choose tau_t to MAXIMISE sum_i q[i, tau_t(z[t,i])],
-     i.e. solve the K x K assignment  max_sigma sum_j A_t[j, sigma(j)]  where
-     A_t[j,k] = sum_{i : z[t,i]=j} q[i,k]   (via scipy.optimize.linear_sum_assignment)
-  3. repeat until no tau_t changes.
-
-Reconstructing the allocations (Rossi Eq. 5.5.19)
--------------------------------------------------
-The household-specific component mean is mu_k + Z_i @ Delta (Z@Delta MUST be
-included). Responsibilities r_{tik} ∝ pvec_{tk} * N(beta_{ti} ; mu_{tk}+Z_i Delta_t,
-Sigma_{tk}); z[t,i] = argmax_k r_{tik}. The same reconstruction serves NUTS, HMC
-and bayesm alike (bayesm's own sampled z is ignored so one method covers all three).
-
-What is and isn't fixed
------------------------
-Relabeling removes PERMUTATION ambiguity (one mode). It cannot remove genuine
-MULTIMODALITY (chains in different partition modes of the mixture weight
-posterior); the report distinguishes the two. Component-level recovery is
-illustrative-only; the load-bearing inference is on the label-invariant
-functionals (analysis.invariant_convergence_summary), which relabeling leaves
-mathematically unchanged.
-
-Dependencies: numpy, scipy, arviz only.
+Dependencies: numpy, scipy, arviz.
 """
 
 import numpy as np
@@ -65,15 +34,12 @@ from src import analysis
 # 1. Reconstruct hard allocations  z[t,i] = argmax_k r_{tik}   (Rossi Eq 5.5.19)
 # --------------------------------------------------------------------------- #
 def reconstruct_allocations(posterior_samples, Z=None, chunk=512):
-    """Reconstruct per-unit hard allocations z of shape (C, S, N).
+    """Reconstruct per-unit hard allocations z[t,i] = argmax_k r_{tik}.
 
-    Parameters
-    ----------
-    posterior_samples : dict with mu_k (C,S,K,P), pvec/pvec_latent,
-                        sigma_inv_chol_k_latent (C,S,K,nlat) and beta_i (C,S,N,P).
-    Z                 : (N, D) demographics; if given (and 'Delta' present) the
-                        household-specific mean mu_k + Z_i @ Delta is used.
-    chunk             : draws processed per batch (caps peak memory).
+    posterior_samples needs mu_k, pvec (or pvec_latent), sigma_inv_chol_k_latent
+    and beta_i. If Z (N, D) is given and 'Delta' is present, the household mean
+    mu_k + Z_i @ Delta is used. `chunk` caps peak memory. Returns (z (C,S,N),
+    conf (C,S)); conf is the per-draw allocation confidence used for the pivot.
     """
     mu    = np.asarray(posterior_samples["mu_k"])                     # (C,S,K,P)
     pvec  = np.asarray(analysis._recover_pvec(posterior_samples))    # (C,S,K)
@@ -128,16 +94,14 @@ def reconstruct_allocations(posterior_samples, Z=None, chunk=512):
 def ecr_iterative_1(z, K, pivot=0, maxiter=100):
     """Pivot-free ECR on hard allocations z (C,S,N) in {0..K-1}.
 
-    The running reference q[i,k] = mean_t 1{tau_t(z[t,i])=k} is SEEDED from the
-    one-hot allocation of a single pivot draw (the highest-confidence draw, passed
-    in via `pivot`), then refined to the global mean by the iteration. Seeding is
-    essential: from a uniform reference (identity init under balanced switching)
-    every assignment is tied and ECR sticks at the degenerate fixed point. Because
-    the reference is then iterated to the global mean, the final labeling is robust
-    to the exact pivot (unlike the non-iterative `ecr`, whose pivot allocation is
-    not robust across independently-collapsed chains).
+    Alternates between a reference q[i,k] = mean_t 1{tau_t(z[t,i]) = k} and
+    per-draw K x K assignments maximising agreement with it
+    (linear_sum_assignment), until no tau_t changes. q is seeded from the pivot
+    draw's one-hot allocation - from a uniform reference every assignment is
+    tied and the iteration sticks - but the final labeling is robust to the
+    exact pivot.
 
-    Returns tau (C,S,K) raw->ref maps, converged, n_iter, switching_rate.
+    Returns (tau (C,S,K) raw->ref maps, converged, n_iter, switching_rate).
     """
     C, S, N = z.shape
     M = C * S
@@ -285,16 +249,12 @@ def component_convergence_table(posterior_samples, K, K_true=None, label="", all
 
 
 def plot_before_after_traces(before, after, K, title="", true_vals=None, K_true=None, ylim=None):
-    """Overlaid chain traces for ALL K components, raw (before) vs relabeled (after).
+    """Chain traces for all K components, raw (left) vs relabeled (right).
 
-    before, after : (C, S, K) arrays of a component-indexed scalar (e.g. pvec, or
-    one column of mu). A K x 2 grid (left = before, right = after) makes the label
-    switching - and its removal - directly visible for every component.
-    true_vals : optional length-K_true ground truth; drawn as a dashed line on the
-    matching 'after' rows (after relabeling, slots are ordered by descending weight,
-    so true values sorted the same way line up rank-to-rank).
-    ylim : optional (lo, hi) y-axis limits applied to every subplot, e.g.
-    (-0.05, 1.05) for pvec so the scale matches the analysis notebook's pvec traces."""
+    before, after : (C, S, K) arrays of a component-indexed scalar (pvec or one
+    mu column). true_vals: optional length-K_true truth, drawn on the matching
+    'after' rows rank-to-rank (slots are weight-ordered after relabeling).
+    ylim: optional (lo, hi) y-limits applied to every subplot."""
     import matplotlib.pyplot as plt
 
     before = np.asarray(before)
@@ -330,10 +290,9 @@ def mixture_mean(posterior_samples):
 
 
 def invariance_guard(before_samples, after_samples, atol=1e-6):
-    """NO-CORRUPTION guard (NOT a success signal). E[u] is symmetric in the
-    component triples, so it is invariant under ANY joint per-draw permutation -
-    a mismatch means the permutation was applied inconsistently across arrays
-    (a bug), but a match does NOT certify the relabeling is correct."""
+    """No-corruption guard, NOT a success signal: E[u] is invariant under any
+    joint per-draw permutation, so a mismatch means the permutation was applied
+    inconsistently across arrays; a match does not certify the relabeling."""
     return bool(np.allclose(mixture_mean(before_samples), mixture_mean(after_samples), atol=atol))
 
 
