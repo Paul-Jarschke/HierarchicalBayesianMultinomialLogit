@@ -73,8 +73,18 @@ from src import analysis
 # --------------------------------------------------------------------------- #
 # Loading - every sampler exposes the same arrays, so one path serves all three
 # --------------------------------------------------------------------------- #
+def _run_duration(results_dir):
+    """Total fit wall-clock in seconds from the run's meta.json (None if absent)."""
+    meta_path = pathlib.Path(results_dir) / "meta.json"
+    if not meta_path.exists():
+        return None
+    d = json.load(open(meta_path)).get("duration_s")
+    return float(d) if d else None
+
+
 def load_sampler(results_dir, name):
-    """Load one run's draws as (C,S,K,P)/(C,S,K) arrays. is_mcmc=True."""
+    """Load one run's draws as (C,S,K,P)/(C,S,K) arrays. is_mcmc=True;
+    duration_s carries the fit's total wall-clock (from meta.json)."""
     rd = pathlib.Path(results_dir)
     with open(rd / "posterior_raw.pkl", "rb") as f:
         post = pickle.load(f)
@@ -84,7 +94,8 @@ def load_sampler(results_dir, name):
         analysis._sigma_from_latent(np.asarray(post["sigma_inv_chol_k_latent"]))
     )                                                                # (C,S,K,P,P)
     std = np.sqrt(np.clip(np.diagonal(Sigma, axis1=3, axis2=4), 0.0, None))  # (C,S,K,P)
-    return {"name": name, "mu": mu, "pvec": pvec, "Sigma": Sigma, "std": std, "is_mcmc": True}
+    return {"name": name, "mu": mu, "pvec": pvec, "Sigma": Sigma, "std": std,
+            "is_mcmc": True, "duration_s": _run_duration(rd)}
 
 
 def true_dgp_model(raw_data):
@@ -102,7 +113,7 @@ def load_sampler_standard(results_dir, name):
     """Load one standard-model (K=1) run's draws, packaged with a size-1
     component axis and pvec == 1 so the rest of this module (grids,
     marginal_density, mixture_moments, distances, convergence diagnostics)
-    applies completely unchanged."""
+    applies completely unchanged. duration_s as in `load_sampler`."""
     rd = pathlib.Path(results_dir)
     with open(rd / "posterior_raw.pkl", "rb") as f:
         post = pickle.load(f)
@@ -112,7 +123,8 @@ def load_sampler_standard(results_dir, name):
     )[:, :, None, :, :]                                                          # (C,S,1,P,P)
     std   = np.sqrt(np.clip(np.diagonal(Sigma, axis1=3, axis2=4), 0.0, None))    # (C,S,1,P)
     pvec  = np.ones(mu.shape[:3])                                                # (C,S,1)
-    return {"name": name, "mu": mu, "pvec": pvec, "Sigma": Sigma, "std": std, "is_mcmc": True}
+    return {"name": name, "mu": mu, "pvec": pvec, "Sigma": Sigma, "std": std,
+            "is_mcmc": True, "duration_s": _run_duration(rd)}
 
 
 def true_dgp_standard(raw_data):
@@ -546,8 +558,13 @@ def functional_diagnostics(model, param_names, quantiles=(0.05, 0.5, 0.95)):
     (rank-normalised split-R-hat) and ESS az.ess bulk/tail - exactly the calls
     liesel.goose.summary_m makes - so values read like any Goose summary. All
     functionals are closed-form (mean, sd) or CDF root-finding (quantiles): no
-    grid is involved. 1-chain runs are split into halves (within-chain check)."""
+    grid is involved. 1-chain runs are split into halves (within-chain check).
+
+    When the model carries duration_s (set by the loaders from meta.json - the
+    fit's total wall-clock incl. warmup), ESS_bulk/s and ESS_tail/s columns are
+    added: effective draws per second, the cross-sampler efficiency metric."""
     mu, std, pvec = model["mu"], model["std"], model["pvec"]
+    duration = model.get("duration_s")
     rows = []
     for j, pj in enumerate(param_names):
         mu_j, sd_j = mu[:, :, :, j], std[:, :, :, j]
@@ -557,9 +574,13 @@ def functional_diagnostics(model, param_names, quantiles=(0.05, 0.5, 0.95)):
         for alpha, q in zip(quantiles, _mixture_quantiles(mu_j, sd_j, pvec, quantiles)):
             series[f"q{int(round(alpha * 100)):02d}"] = q
         for name, s in series.items():
-            rows.append({"param": pj, "functional": name,
-                         "Rhat": _rhat(s), "ESS_bulk": _ess(s),
-                         "ESS_tail": float(az.ess(_as_chains(s), method="tail"))})
+            row = {"param": pj, "functional": name,
+                   "Rhat": _rhat(s), "ESS_bulk": _ess(s),
+                   "ESS_tail": float(az.ess(_as_chains(s), method="tail"))}
+            if duration:
+                row["ESS_bulk/s"] = row["ESS_bulk"] / duration
+                row["ESS_tail/s"] = row["ESS_tail"] / duration
+            rows.append(row)
     return pd.DataFrame(rows).set_index(["param", "functional"])
 
 
