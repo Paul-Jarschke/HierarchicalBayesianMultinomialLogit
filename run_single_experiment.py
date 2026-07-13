@@ -110,7 +110,7 @@ def parse_args():
     ap.add_argument("--dirichlet-a", type=float, default=1.0)
     ap.add_argument("--num-integration-steps", type=int, default=10)
     ap.add_argument("--rw-s", type=float, default=None,
-                    help="bayesm_gibbs: RW scale (default 2.93/sqrt(n_params)).")
+                    help="bayesm_gibbs: RW scale (default 2.38/sqrt(n_params)).")
     ap.add_argument("--frac-w", type=float, default=0.1,
                     help="bayesm_gibbs: fractional-likelihood weight w.")
     ap.add_argument("--r-total", type=int, default=42000,
@@ -211,7 +211,7 @@ def main():
                  f"(Rossi/bayesm scheme if True)")
         if args.sampler == "bayesm_gibbs":
             hlog(f"rw_s / frac_w      : "
-                 f"{args.rw_s if args.rw_s is not None else 'auto (2.93/sqrt(P))'}"
+                 f"{args.rw_s if args.rw_s is not None else 'auto (2.38/sqrt(P))'}"
                  f" / {args.frac_w}")
             hlog(f"chains/R/burn/thin : "
                  f"{args.chains} / {args.r_total} / {args.burn_in} / {args.thin}")

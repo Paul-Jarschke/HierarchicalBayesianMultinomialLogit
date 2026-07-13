@@ -24,8 +24,10 @@ Per-iteration sweep order (exactly rhierMnlRwMixture_rcpp_loop):
                           increment cov s^2 * (H_i + Sigma_{ind_i}^{-1})^{-1},
                           H_i = unit Hessian at the fractional-likelihood MLE)
 
-bayesm defaults reproduced: s = 2.93/sqrt(n_params), w = 0.1, beta_i
-initialised at the fractional MLEs, ind initialised in equal blocks.
+bayesm defaults reproduced: s = 2.38/sqrt(n_params) (BayesmConstant.RRScaling;
+the package's Roberts-Gelman-Gilks constant - the Rossi 2005 book text instead
+states 2.93), w = 0.1, beta_i initialised at the fractional MLEs, ind
+initialised in equal blocks.
 
 Because component subsetting is dynamic-shape (forbidden under jit), all
 per-component conditionals use one-hot-masked sufficient statistics; for
@@ -209,7 +211,7 @@ def run_bayesm_gibbs_inference_mixture_hbmnl(
         burn_in: int = 2000,         # raw sweeps discarded before thinning
         thin: int = 4,               # keep every `thin`-th raw draw after burn-in
         seed: int = 123,
-        s: float | None = None,      # RW scale; bayesm default 2.93/sqrt(n_params)
+        s: float | None = None,      # RW scale; bayesm default 2.38/sqrt(n_params)
         w: float = 0.1):             # fractional-likelihood weight (bayesm default)
     """
     Configure and run the bayesm-exact hybrid Gibbs sampler (data-augmentation
@@ -241,7 +243,7 @@ def run_bayesm_gibbs_inference_mixture_hbmnl(
     burn_in   : raw sweeps burned via Goose's warmup epoch (bayesm default 2000).
     thin      : post-burn-in thinning interval (bayesm default 4).
     seed      : RNG seed.
-    s         : RW-Metropolis scaling; None -> bayesm default 2.93/sqrt(n_params).
+    s         : RW-Metropolis scaling; None -> bayesm default 2.38/sqrt(n_params).
     w         : fractional-likelihood weight for candidate-density tuning.
 
     Returns
@@ -274,7 +276,7 @@ def run_bayesm_gibbs_inference_mixture_hbmnl(
     dirichlet_a = jnp.ones(K_comp) * float(prior["dirichlet_a"])
 
     if s is None:
-        s = 2.93 / np.sqrt(n_params)               # BayesmConstant.RRScaling
+        s = 2.38 / np.sqrt(n_params)               # BayesmConstant.RRScaling / sqrt(nvar)
     s = float(s)
 
     Z = jnp.asarray(data_dict["Z"]) if has_Z else None
