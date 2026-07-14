@@ -1,10 +1,18 @@
 # Hierarchical Bayesian Multinomial Logit - Mixture Model Comparison
 
-A simulation study comparing two Bayesian HBMNL mixture-of-normals implementations:
+A simulation study comparing Bayesian HBMNL mixture-of-normals implementations
+on identical data:
 
 - **bayesm** (R) - Gibbs sampler with a random-walk Metropolis step for the choice
   coefficients (`rhierMnlRwMixture`, Rossi 2006)
 - **Liesel / Goose** (Python) - gradient-based MCMC: NUTS and fixed-step HMC
+- **replication** (Python) - a line-faithful Liesel port of bayesm's hybrid
+  Gibbs + RW-Metropolis sampler (`src/inference/bayesm_gibbs.py`), isolating
+  implementation effects from algorithm effects
+
+A companion set of **standard (one-component) experiments** fits the no-mixture
+HBMNL (Rossi §5.4) with NUTS, HMC and bayesm on a separate dataset
+(`hbmnl_normal_experiments/`).
 
 The two implementations are run on identical datasets so that differences in
 posterior recovery and mixing can be attributed to the samplers rather than the
@@ -72,13 +80,16 @@ library under `renv/library/`, isolated from your global R packages.
 HierarchicalBayesianMNL/
 │
 ├── generate_data.py                    # CLI - generates all simulation datasets
-├── run_single_experiment.py            # runs ONE Liesel model fit, saves all output
+├── run_single_experiment.py            # runs ONE Liesel fit (nuts | hmc | bayesm_gibbs), saves all output
 ├── run_single_bayesm_experiment.py     # runs ONE bayesm fit: drives the R sampler, writes canonical artifacts
 ├── run_single_bayesm_experiment.R      # bayesm rhierMnlRwMixture sampler (per chain, seed loop)
-├── run_all_experiments.py              # batch orchestrator, all samplers incl. bayesm (--samplers selects which)
-├── analysis_template.ipynb             # per-run diagnostics / recovery notebook
-├── label_switching_template.ipynb      # per-run ECR.iterative.1 relabeling notebook
-├── full_marginal_comparison_template.ipynb  # per-<k>_comp marginal-density comparison notebook
+├── run_standard_experiment.py          # runs ONE standard (one-component) fit (nuts | hmc | bayesm)
+├── run_all_experiments.py              # batch orchestrator, all samplers (--samplers selects which)
+├── analysis_template.ipynb             # per-run diagnostics / recovery notebook (mixture)
+├── standard_analysis_template.ipynb    # per-run diagnostics notebook (standard model)
+├── label_switching_template.ipynb      # per-run pvec relabeling notebook (ECR, Algorithm 5)
+├── full_marginal_comparison_template.ipynb   # per-<k>_comp marginal-density comparison notebook
+├── standard_model_comparison_template.ipynb  # cross-sampler comparison for the standard model
 ├── distribute_notebooks.py             # copies templates -> <run>/ or <k>_comp/ (--which selects which)
 ├── execute_analysis_notebooks.py       # runs notebooks in-place via nbconvert (--name selects which)
 │
@@ -98,22 +109,32 @@ HierarchicalBayesianMNL/
 │   └── {1_chain, 2_chains}/            # by chain count
 │       └── {1,2,3,5}_comp/             # by true component count
 │           ├── full_marginal_comparison.ipynb  # cross-sampler comparison (one per <k>_comp)
-│           └── {NUTS, HMC, bayesm}/    # by sampler
+│           └── {NUTS, HMC, bayesm, replication}/  # by sampler
 │               └── <run>/              # e.g. 5comp_equal_K5_seed42/
 │                   ├── results/        # all artifacts (posterior_raw.pkl, meta.json, ...)
 │                   ├── analysis.ipynb       # per-run diagnostics / recovery
-│                   └── label_switching.ipynb  # per-run ECR relabeling
+│                   └── label_switching.ipynb  # per-run pvec relabeling
+│
+├── hbmnl_normal_experiments/           # standard (one-component) model
+│   ├── model_comparison.ipynb          # cross-sampler comparison (NUTS / HMC / bayesm)
+│   └── {NUTS, HMC, BAYESM}/standard_seed42/
+│       ├── results/                    # same artifact set as the mixture runs
+│       └── analysis.ipynb
 │
 └── src/
-    ├── dgp.py                          # data-generating process
-    ├── mixturemodel.py                 # Liesel model specification
+    ├── dgp.py                          # data-generating processes (mixture + standard)
+    ├── mixturemodel.py                 # Liesel model, marginalized allocations (NUTS/HMC)
+    ├── bayesm_mixture_model.py         # Liesel model, explicit allocations (replication)
+    ├── standardmodel.py                # one-component model + its NUTS/HMC runners
     ├── analysis.py                     # diagnostics, recovery, invariant convergence, export
-    ├── label_switching.py              # ECR.iterative.1 relabeling (Papastamoulis)
-    ├── marginal_comparison.py          # marginal densities, moments, distances, invariant R-hat/ESS
+    ├── label_switching.py              # pvec relabeling via ECR iterative 1 (Algorithm 5)
+    ├── marginal_comparison.py          # marginal densities, moments, distances, convergence
     └── inference/
         ├── __init__.py
         ├── nuts.py                     # adaptive NUTS runner
-        └── hmc.py                      # fixed-step HMC runner
+        ├── hmc.py                      # fixed-step HMC runner
+        ├── bayesm_gibbs.py             # bayesm-exact hybrid Gibbs runner (replication)
+        └── init.py                     # bayesm-style initial values for NUTS/HMC
 ```
 
 Each run folder holds a `results/` directory (all batch output) plus its two
@@ -226,14 +247,21 @@ near the simplex corners and encourages spurious components to shrink.
 
 ### Samplers
 
-| Sampler | Module                  | Strategy                                                        |
-| ------- | ----------------------- | --------------------------------------------------------------- |
-| NUTS    | `src/inference/nuts.py` | Adaptive trajectory length; one NUTS kernel per block.          |
-| HMC     | `src/inference/hmc.py`  | Fixed-length leapfrog (default 10 integration steps) per block. |
+| Sampler       | Module                          | Strategy                                                                                        |
+| ------------- | ------------------------------- | ----------------------------------------------------------------------------------------------- |
+| NUTS          | `src/inference/nuts.py`         | Adaptive trajectory length; one NUTS kernel per block.                                          |
+| HMC           | `src/inference/hmc.py`          | Fixed-length leapfrog (default 10 integration steps) per block.                                 |
+| replication   | `src/inference/bayesm_gibbs.py` | bayesm-exact hybrid Gibbs (conjugate comps/ind/pvec/Delta) + per-unit RW-Metropolis for `beta_i`. |
+| bayesm        | `run_single_bayesm_experiment.R` | The shipped R implementation of `rhierMnlRwMixture`, driven via the Python bridge.             |
 
-All runners sample five blocks separately - `pvec_latent`,
-`sigma_inv_chol_k_latent`, `mu_k`, `Delta` (if demographics present), `beta_i` - and
-take an explicit `K` for correct logging.
+NUTS and HMC sample five gradient blocks separately - `pvec_latent`,
+`sigma_inv_chol_k_latent`, `mu_k`, `Delta` (if demographics present), `beta_i` -
+on the marginalized model, initialised with bayesm's own scheme
+(`src/inference/init.py`). The replication registers bayesm's Gibbs sweep as
+Goose kernels on the augmented model (explicit allocations `ind`) and uses
+bayesm's defaults, including the RW scale `s = 2.38/sqrt(n_params)`
+(`BayesmConstant.RRScaling`; the Rossi 2005 book text states 2.93 - the package
+deviates from its own book). All runners take an explicit `K`.
 
 ---
 
@@ -267,6 +295,11 @@ uv run python run_single_experiment.py \
     --dirichlet-a 1.0 \             # Dirichlet concentration (use <1.0, e.g. 0.5, to
     \                               #   encourage collapse when K_MODEL > K_TRUE)
     --num-integration-steps 10 \    # HMC only: fixed leapfrog steps per proposal
+    --no-informed-init \            # nuts/hmc: use the naive (0, I, uniform) init instead
+    --r-total 42000 \               # bayesm_gibbs only: total raw Gibbs sweeps
+    --burn-in 2000 \                # bayesm_gibbs only: raw sweeps discarded
+    --thin 4 \                      # bayesm_gibbs only: keep every thin-th draw after burn-in
+    --rw-s <float> \                # bayesm_gibbs only: RW scale (default 2.38/sqrt(n_params))
     --no-save-results \             # skip pickling the full Goose mcmc_results object
     --no-save-raw \                 # skip pickling posterior_raw.pkl
     --data-dir data/simulated/mixture  # override the default data directory
@@ -291,9 +324,11 @@ Writes into `--outdir`:
 ### The full batch
 
 `run_all_experiments.py` defines the experiment grid
-(`{1, 2} chains × {1,2,3,5} components × {nuts, hmc}`) and runs each fit as a
+(`{1, 2, 4} chains × {1,2,3,5} components`, samplers selectable via
+`--samplers nuts,hmc,bayesm_gibbs,bayesm`) and runs each fit as a
 **separate subprocess**, so JAX memory is released between fits and a hard crash in
-one fit cannot kill the batch.
+one fit cannot kill the batch. Output folders per sampler: `NUTS/`, `HMC/`,
+`replication/` (for `bayesm_gibbs`) and `BAYESM/` inside each `<k>_comp`.
 
 ```bash
 uv run python run_all_experiments.py --dry-run        # print the plan only
@@ -355,7 +390,7 @@ uv run python run_all_experiments.py --samplers bayesm --force          # re-run
 
 Each run folder holds two self-configuring notebooks: **`analysis.ipynb`**
 (diagnostics and parameter recovery) and **`label_switching.ipynb`**
-(ECR.iterative.1 relabeling). Both follow the same workflow - **distribute** first
+(pvec relabeling via ECR). Both follow the same workflow - **distribute** first
 (place the template), then **execute** (run them). The analysis notebook is covered
 first; the label-switching commands are in their own subsection below.
 
@@ -425,13 +460,19 @@ skipped counts.
 
 ### Label-switching notebooks
 
-`label_switching.ipynb` applies post-hoc **ECR.iterative.1** relabeling
-(Papastamoulis & Iliopoulos 2010; the `label.switching` R package) to resolve label
-switching in the mixture component parameters, with full before/after diagnostics.
-It reconstructs the allocations from the saved draws (`mu_k + Z@Delta`, `Sigma_k`,
-`pvec`, `beta_i`; Rossi Eq. 5.5.19), so the same notebook works for NUTS, HMC and
-bayesm. The logic lives in `src/label_switching.py`; the template is
-`label_switching_template.ipynb`.
+`label_switching.ipynb` applies post-hoc relabeling with **ECR iterative
+version 1** (Papastamoulis & Iliopoulos 2010; Papastamoulis 2016, Algorithm 5 -
+implemented exactly: identity init, per-unit modal pivot, per-draw linear
+assignment, stop when the agreement objective stops improving). **Only the
+mixture weights `pvec` are post-processed** - component means/covariances are
+not relabeled, since all other inference in the study uses label-invariant
+functionals. The notebook shows per-slot pvec R-hat/ESS and traces before vs
+after, classifies the outcome (permutation-fixed vs genuinely multimodal vs
+no-op), and saves `relabeled_pvec.pkl` additively. Allocations are
+reconstructed from the saved draws (`mu_k + Z@Delta`, `Sigma_k`, `pvec`,
+`beta_i`; Rossi Eq. 5.5.19), so the same notebook works for NUTS, HMC, bayesm
+and the replication. The logic lives in `src/label_switching.py`; the template
+is `label_switching_template.ipynb`.
 
 It is distributed via the `--which` flag of the shared distributor, and executed
 via the `--name` flag of the shared runner (so all of `--dry-run`, `--force`,
@@ -459,13 +500,14 @@ uv run python execute_analysis_notebooks.py --name label_switching.ipynb --force
 
 ### Marginal-density comparison notebooks
 
-`full_marginal_comparison.ipynb` contrasts the NUTS, HMC and bayesm runs that sit
-side by side, so **one notebook is placed per `<chains>/<k>_comp/` folder** (above
-the sampler folders), not per run. It computes the marginal posterior densities of
-`beta` (Rossi Eq. 5.5.19), the mixture moments (Eq. 5.5.2), and the distance of
-**every sampler's marginal to the True DGP marginal** (never sampler-vs-sampler):
-Hellinger, KL(model‖true), Jensen-Shannon, total-variation and Wasserstein-1. The
-logic lives in `src/marginal_comparison.py`; the template is
+`full_marginal_comparison.ipynb` contrasts the NUTS, HMC, bayesm and replication
+runs that sit side by side, so **one notebook is placed per `<chains>/<k>_comp/`
+folder** (above the sampler folders), not per run. It computes the marginal
+posterior densities of `beta` (Rossi Eq. 5.5.19), the mixture moments
+(Eq. 5.5.2), and the distance of **every sampler's marginal to the True DGP
+marginal** (never sampler-vs-sampler): Hellinger, KL(model‖true),
+Jensen-Shannon, total-variation and Wasserstein-1. The logic lives in
+`src/marginal_comparison.py`; the template is
 `full_marginal_comparison_template.ipynb`.
 
 Every quantity here is **label-invariant** (a per-draw permutation of components
@@ -476,12 +518,22 @@ results. Methodological choices:
   unbounded envelope** over every component of every sampler plus the True DGP
   (`build_grids_full`: nothing excluded, but diffuse surplus components can
   stretch it widely) and a **Chebyshev-filtered window** clipped to each model's
-  own aggregate mixture `mean ± 5·std` (`build_grids_chebyshev`: at least 96% of
-  each model's marginal mass is guaranteed inside, for any distribution with
-  finite variance). The True DGP enters the envelope but stays an overlay in the
-  plots.
-- **Convergence** uses `arviz` **rank-normalized split-R̂** and ESS on the real
-  `(chains, draws)` invariant series.
+  own pooled-marginal `mean ± 5·std` (`build_grids_chebyshev`; the moments are
+  the exact moments of the trimmed density via the law of total variance, so
+  Chebyshev's inequality guarantees at least 96% of each model's marginal mass
+  inside, for any distribution with finite variance). The True DGP enters the
+  envelope but stays an overlay in the plots.
+- **Trimmed mass is reported exactly**: `retained_mass` / `trimmed_tails`
+  integrate each Gaussian-mixture marginal over its window in closed form
+  (mixture CDF, no grid error), so the notebook tables show precisely how much
+  mass each window removes per sampler and parameter, split by tail - which is
+  also the renormalisation each density receives before the distances.
+- **Convergence of the marginals** uses Goose-identical diagnostics: `az.rhat`
+  (rank-normalized split-R̂) and `az.ess` (bulk and tail) - the exact calls in
+  `liesel.goose`'s own summaries - applied to grid-free scalar functionals of
+  each per-draw marginal (mean, sd, q05/q50/q95), plus **ESS per second** using
+  each fit's total wall-clock from `meta.json` as the cross-sampler efficiency
+  metric.
 - For **1-chain runs**, the single chain is split into halves to give a valid
   **split-R̂** - reported as a *within-chain* check only. This is the standard
   fallback (Stan computes split-R̂ by default; even one chain yields a valid value
@@ -516,19 +568,18 @@ uv run python execute_analysis_notebooks.py --name full_marginal_comparison.ipyn
 
 ---
 
-## bayesm (R) Replication
+## The two bayesm arms
 
-bayesm runs through the automated pipeline in
+**bayesm (R)** runs through the automated pipeline in
 [The bayesm batch](#the-bayesm-batch): `run_all_experiments.py --samplers bayesm` ->
-`run_single_bayesm_experiment.py` -> `run_single_bayesm_experiment.R` (there is no
-longer a hand-run `.R` script next to each notebook). The R script loads the
-**same** scenario JSON the Liesel run used (so the two samplers provably compare on
-identical data), reconstructs `lgtdata`, runs `rhierMnlRwMixture` once per chain
-(seed loop), and dumps the raw draws; the Python wrapper converts them into the
-canonical `posterior_raw.pkl` (`mu_k`, `pvec`, `sigma_inv_chol_k_latent`, `beta_i`,
-`Delta`) plus `export.pkl` / `meta.json` / `status.json` - byte-compatible with the
-Liesel artifacts, so the analysis, label-switching and marginal-comparison notebooks
-all work on bayesm unchanged.
+`run_single_bayesm_experiment.py` -> `run_single_bayesm_experiment.R`. The R script
+loads the **same** scenario JSON the Liesel run used (so the samplers provably
+compare on identical data), reconstructs `lgtdata`, runs `rhierMnlRwMixture` once
+per chain (seed loop), and dumps the raw draws; the Python wrapper converts them
+into the canonical `posterior_raw.pkl` (`mu_k`, `pvec`, `sigma_inv_chol_k_latent`,
+`beta_i`, `Delta`) plus `export.pkl` / `meta.json` / `status.json` - byte-compatible
+with the Liesel artifacts, so the analysis, label-switching and marginal-comparison
+notebooks all work on bayesm unchanged.
 
 The model prior is matched to the Liesel model (`ν = n_params + 3`, `V = ν·I`,
 `Amu`, Dirichlet `a`, `Ad = A_delta·I`). The R->Python bridge writes raw float64
@@ -538,6 +589,42 @@ long chain is Rossi's convention; for the cross-sampler convergence comparison w
 run multiple seed-based chains - which are **not** over-dispersed, so their R-hat is
 a weaker test than the NUTS/HMC chains.
 
+**replication (Liesel)** is the same algorithm re-implemented in Python:
+`run_all_experiments.py --samplers bayesm_gibbs` runs
+`src/inference/bayesm_gibbs.py` on the augmented model
+(`src/bayesm_mixture_model.py`, explicit allocations `ind`), reproducing bayesm's
+sweep order, conjugate updates, fractional-likelihood Metropolis tuning,
+initialization, iteration scheme (`R_TOTAL`/`BURN_IN`/`THIN`) and defaults -
+including `s = 2.38/sqrt(n_params)`. Its output lands in `replication/` folders
+with the identical artifact set, and its posterior additionally contains the
+allocation draws `ind`. Comparing `replication` against `bayesm` isolates
+implementation/platform effects; comparing it against NUTS/HMC isolates the
+algorithm (data-augmentation Gibbs vs gradient MCMC) on the same platform.
+
+---
+
+## Standard (One-Component) Experiments
+
+`hbmnl_normal_experiments/` benchmarks the no-mixture HBMNL (Rossi §5.4) with
+NUTS, HMC (`src/standardmodel.py`) and bayesm (`rhierMnlRwMixture` with
+`ncomp = 1` via the R bridge) on a dedicated dataset
+(`data/simulated/mixture/standard.json`, generated on first use):
+
+```bash
+uv run python run_standard_experiment.py --sampler nuts
+uv run python run_standard_experiment.py --sampler hmc
+uv run python run_standard_experiment.py --sampler bayesm
+```
+
+All three arms produce plain single-component keys (`mu`, `sigma_inv_chol_latent`,
+`Delta`, `beta_i`) in `posterior_raw.pkl`. The cross-sampler notebook is
+distributed and executed with the shared tooling, pointed at this tree:
+
+```bash
+uv run python distribute_notebooks.py --which standard_model_comparison --exp-root hbmnl_normal_experiments --force
+uv run python execute_analysis_notebooks.py --name model_comparison.ipynb --exp-root hbmnl_normal_experiments --force
+```
+
 ---
 
 ## Analysing Results
@@ -546,7 +633,7 @@ Reload a saved fit into a notebook and feed it straight into `src/analysis.py`:
 
 ```python
 import pickle, json, pathlib
-run = pathlib.Path("hbmnl_mixture_experiments/1_chain/5_comp/NUTS/results/run")
+run = pathlib.Path("hbmnl_mixture_experiments/1_chain/5_comp/NUTS/5comp_equal_K5_seed42/results")
 
 posterior_samples = pickle.load(open(run / "posterior_raw.pkl", "rb"))  # numpy dict
 mcmc_results      = pickle.load(open(run / "mcmc_results.pkl", "rb"))    # Goose object
