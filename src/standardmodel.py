@@ -72,13 +72,14 @@ def build_standard_hbmnl_model(
         ),
         name="sigma_inv_chol",
     )
+    # FillScaleTriL derives the Cholesky factor of the inverse covariance
     sigma_inv_chol_latent = sigma_inv_chol.transform(
         tfb.FillScaleTriL(), name="sigma_inv_chol_latent"
     )
 
     # ── mu | Sigma ~ N(0, Sigma / a_mu) ────────────────────────────────────
     mu_prec_factor = lsl.Var.new_calc(
-        lambda L: jnp.sqrt(a_mu) * L,
+        lambda L: jnp.sqrt(a_mu) * L,          # Cholesky factor of the prior precision  a_mu * Sigma^{-1}
         L=sigma_inv_chol,
         name="mu_prec_factor",
     )
@@ -136,9 +137,11 @@ def build_standard_hbmnl_model(
     # ── Likelihood ─────────────────────────────────────────────────────────
     X_var         = lsl.Var.new_obs(data_dict["X"],        name="X_obs")
     idx_var       = lsl.Var.new_obs(data_dict["unit_idx"], name="idx_obs")
+    # gather each observation's unit-level coefficient vector
     beta_expanded = lsl.Var.new_calc(
         lambda b, idx: b[idx], b=beta_i, idx=idx_var, name="beta_expanded"
     )
+    # per-observation utilities  X_it @ beta_i fed to the choice likelihood
     logits = lsl.Var.new_calc(
         lambda x, b: jnp.einsum("nij,nj->ni", x, b),
         x=X_var, b=beta_expanded,

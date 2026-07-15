@@ -58,14 +58,15 @@ def run_hmc_inference_mixture_hbmnl(
     eb = gs.EngineBuilder(seed=seed, num_chains=chains)
     eb.set_model(gs.LieselInterface(model))
     if use_informed_init:
-        set_multichain_initial_values(
+        set_multichain_initial_values(                    # bayesm-style data-informed start (src.inference.init)
             eb, build_bayesm_initial_states(model, data_dict, K, chains, seed)
         )
     else:
-        eb.set_initial_values(model.state)
+        eb.set_initial_values(model.state)                # naive (0, I, uniform) start
 
     has_Z = data_dict.get("Z") is not None
 
+    # One HMC kernel per block; add-order sets the sweep (kernel_00 .. kernel_04).
     # Component weights (simplex geometry, diagonal mass matrix)
     eb.add_kernel(gs.HMCKernel(
         ["pvec_latent"],

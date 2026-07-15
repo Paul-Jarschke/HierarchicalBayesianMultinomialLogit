@@ -103,6 +103,7 @@ def build_mixture_hbmnl_model(
         ),
         name="pvec",
     )
+    # SoftmaxCentered gives the unconstrained coordinate the sampler explores
     pvec_latent = pvec.transform(tfb.SoftmaxCentered(), name="pvec_latent")
 
     # ── Sigma_k^{-1} ~ Wishart via Cholesky ────────────────────────────────
@@ -115,13 +116,14 @@ def build_mixture_hbmnl_model(
         ),
         name="sigma_inv_chol_k",
     )
+    # FillScaleTriL derives the Cholesky factor of the inverse covariance
     sigma_inv_chol_k_latent = sigma_inv_chol_k.transform(
         tfb.FillScaleTriL(), name="sigma_inv_chol_k_latent"
     )
 
     # ── mu_k | Sigma_k ~ N(0, Sigma_k / a_mu) ──────────────────────────────
     mu_prec_factor_k = lsl.Var.new_calc(
-        lambda L: jnp.sqrt(a_mu) * L,
+        lambda L: jnp.sqrt(a_mu) * L,          # Cholesky factor of the prior precision  a_mu * Sigma_k^{-1}
         L=sigma_inv_chol_k,
         name="mu_prec_factor_k",
     )
@@ -169,6 +171,7 @@ def build_mixture_hbmnl_model(
         )
  
     def _make_beta_mixture(pvec, locs, precision_factors):
+        # marginalises the discrete allocation k, so no explicit z is sampled
         return tfd.MixtureSameFamily(
             mixture_distribution=tfd.Categorical(probs=pvec),
             components_distribution=tfde.MultivariateNormalPrecisionFactorLinearOperator(
@@ -193,9 +196,11 @@ def build_mixture_hbmnl_model(
     # ── Likelihood ─────────────────────────────────────────────────────────
     X_var         = lsl.Var.new_obs(data_dict["X"],        name="X_obs")
     idx_var       = lsl.Var.new_obs(data_dict["unit_idx"], name="idx_obs")
+    # gather each observation's unit-level coefficient vector
     beta_expanded = lsl.Var.new_calc(
         lambda b, idx: b[idx], b=beta_i, idx=idx_var, name="beta_expanded"
     )
+    # per-observation utilities  X_it @ beta_i fed to the choice likelihood
     logits = lsl.Var.new_calc(
         lambda x, b: jnp.einsum("nij,nj->ni", x, b),
         x=X_var, b=beta_expanded,

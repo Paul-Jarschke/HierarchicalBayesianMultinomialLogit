@@ -112,6 +112,8 @@ def build_bayesm_mixture_hbmnl_model(
         ),
         name="pvec",
     )
+    # SoftmaxCentered present so gradient kernels can share this model
+    # The Gibbs-RW model overwrites pvec with a conjugate draw
     pvec_latent = pvec.transform(tfb.SoftmaxCentered(), name="pvec_latent")
 
     # ── Sigma_k^{-1} ~ Wishart via Cholesky ────────────────────────────────
@@ -124,13 +126,14 @@ def build_bayesm_mixture_hbmnl_model(
         ),
         name="sigma_inv_chol_k",
     )
+    # FillScaleTriL derives the Cholesky factor of the inverse covaraince
     sigma_inv_chol_k_latent = sigma_inv_chol_k.transform(
         tfb.FillScaleTriL(), name="sigma_inv_chol_k_latent"
     )
 
     # ── mu_k | Sigma_k ~ N(0, Sigma_k / a_mu) ──────────────────────────────
     mu_prec_factor_k = lsl.Var.new_calc(
-        lambda L: jnp.sqrt(a_mu) * L,
+        lambda L: jnp.sqrt(a_mu) * L,          # Cholesky factor of the prior precision  a_mu * Sigma_k^{-1}
         L=sigma_inv_chol_k,
         name="mu_prec_factor_k",
     )
@@ -173,7 +176,7 @@ def build_bayesm_mixture_hbmnl_model(
     # ── beta_i | ind_i: unit-specific normal via allocation indexing ───────
     if has_Z:
         beta_loc_i = lsl.Var.new_calc(
-            lambda zd, mu, i: zd + mu[i],
+            lambda zd, mu, i: zd + mu[i],      # each unit takes its own component's mean mu_{ind_i}
             zd=z_delta, mu=mu_k, i=ind,
             name="beta_loc_i",
         )
@@ -184,7 +187,7 @@ def build_bayesm_mixture_hbmnl_model(
             name="beta_loc_i",
         )
     beta_prec_factor_i = lsl.Var.new_calc(
-        lambda L, i: L[i],
+        lambda L, i: L[i],                     # and its own component's precision factor Sigma_{ind_i}^{-1}
         L=sigma_inv_chol_k, i=ind,
         name="beta_prec_factor_i",
     )
@@ -202,9 +205,11 @@ def build_bayesm_mixture_hbmnl_model(
     # ── Likelihood ─────────────────────────────────────────────────────────
     X_var         = lsl.Var.new_obs(data_dict["X"],        name="X_obs")
     idx_var       = lsl.Var.new_obs(data_dict["unit_idx"], name="idx_obs")
+    # gather each observations unit-level coefficient vector
     beta_expanded = lsl.Var.new_calc(
         lambda b, idx: b[idx], b=beta_i, idx=idx_var, name="beta_expanded"
     )
+    # per-observation utilities  X_it @ beta_i fed to the choice likelihood
     logits = lsl.Var.new_calc(
         lambda x, b: jnp.einsum("nij,nj->ni", x, b),
         x=X_var, b=beta_expanded,
