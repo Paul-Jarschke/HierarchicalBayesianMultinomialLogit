@@ -40,6 +40,13 @@ surplus components must collapse.
 - R ≥ 4.5
 - [renv](https://rstudio.github.io/renv/) - per-project R library, the R analogue of `uv.lock`
 
+**Optional (model-graph figures)**
+
+- [Graphviz](https://graphviz.org/download/) - the `dot` binary must be on `PATH`
+  (Windows: `winget install Graphviz.Graphviz`, then reopen the terminal). Only
+  needed to run `plot_model_graphs.py`; `pydot` (the Python side) is already
+  pinned in `uv.lock`.
+
 ---
 
 ## Setup
@@ -92,6 +99,7 @@ HierarchicalBayesianMNL/
 ├── standard_model_comparison_template.ipynb  # cross-sampler comparison for the standard model
 ├── distribute_notebooks.py             # copies templates -> <run>/ or <k>_comp/ (--which selects which)
 ├── execute_analysis_notebooks.py       # runs notebooks in-place via nbconvert (--name selects which)
+├── plot_model_graphs.py                # renders the three model DAGs -> model_graphs/ (needs Graphviz)
 │
 ├── pyproject.toml / uv.lock            # Python dependencies (uv)
 ├── renv.lock / .Rprofile / renv/       # R dependencies (renv)
@@ -262,6 +270,17 @@ Goose kernels on the augmented model (explicit allocations `ind`) and uses
 bayesm's defaults, including the RW scale `s = 2.38/sqrt(n_params)`
 (`BayesmConstant.RRScaling`; the Rossi 2005 book text states 2.93 - the package
 deviates from its own book). All runners take an explicit `K`.
+
+### Model graphs
+
+```bash
+uv run python plot_model_graphs.py    # -> model_graphs/model_graph_{mixture,augmented,standard}.png
+```
+
+Renders the Liesel variable graph (`lsl.plot_vars`, Graphviz `dot` layout) for
+the marginalized mixture model, the augmented (replication) model, and the
+standard model, using tiny dummy data (the graph structure is independent of
+data size). Requires the Graphviz binary - see Prerequisites.
 
 ---
 
