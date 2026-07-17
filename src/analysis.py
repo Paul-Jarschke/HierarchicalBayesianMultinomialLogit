@@ -120,7 +120,10 @@ def plot_goose_style_diagnostics(delta_array, demo_idx, param_idx,
                                  demo_name, param_name, n_lags=30):
     n_chains = delta_array.shape[0]
     fig = plt.figure(figsize=(12, 7))
-    fig.suptitle(f"Δ[{demo_name}, {param_name}]", fontsize=14, y=0.95)
+    fig.suptitle(
+        f"Diagnostics: $\\Delta_{{{demo_idx + 1},{param_idx + 1}}}$ ({demo_name}:{param_name})",
+        fontsize=14, y=0.95,
+    )
     gs_layout = gridspec.GridSpec(2, 2, height_ratios=[1.2, 1], hspace=0.3, wspace=0.2)
 
     ax_trace = fig.add_subplot(gs_layout[0, :])
@@ -327,7 +330,10 @@ def plot_mu_k_diagnostics(mu_samples, K, P, param_names, n_lags=30):
     for k in range(K):
         for p in range(P):
             fig = plt.figure(figsize=(12, 7))
-            fig.suptitle(f"mu_k[Component {k + 1}, {param_names[p]}]", fontsize=14, y=0.95)
+            fig.suptitle(
+                f"Diagnostics: $\\mu_{{{k + 1},{p + 1}}}$ (Comp{k + 1}:{param_names[p]})",
+                fontsize=14, y=0.95,
+            )
             gs_layout = gridspec.GridSpec(2, 2, height_ratios=[1.2, 1], hspace=0.3, wspace=0.2)
 
             ax_trace = fig.add_subplot(gs_layout[0, :])
@@ -594,7 +600,7 @@ def plot_pvec_diagnostics(pvec_samples, K, true_pvec=None, K_true=None, n_lags=3
         has_true = (true_pvec is not None and k < K_true)
 
         fig = plt.figure(figsize=(12, 7))
-        fig.suptitle(f"Diagnostics: pvec[{k}]", fontsize=14, y=0.95)
+        fig.suptitle(f"Diagnostics: $\\pi_{{{k}}}$ (pvec[{k}])", fontsize=14, y=0.95)
         gs_layout = gridspec.GridSpec(2, 2, height_ratios=[1.2, 1], hspace=0.35, wspace=0.25)
 
         ax_trace = fig.add_subplot(gs_layout[0, :])
