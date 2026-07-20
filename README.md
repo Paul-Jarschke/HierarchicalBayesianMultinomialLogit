@@ -114,7 +114,7 @@ HierarchicalBayesianMNL/
 │
 ├── hbmnl_mixture_experiments/
 │   ├── experiment_configs.py           # single source of truth for all scenarios
-│   └── {1_chain, 2_chains}/            # by chain count
+│   └── 2_chains/                       # by chain count
 │       └── {1,2,3,5}_comp/             # by true component count
 │           ├── full_marginal_comparison.ipynb  # cross-sampler comparison (one per <k>_comp)
 │           └── {NUTS, HMC, bayesm, replication}/  # by sampler
@@ -297,14 +297,14 @@ uv run python run_single_experiment.py \
     --scenario 5comp_equal \
     --k-model 5 \
     --sampler nuts \
-    --outdir hbmnl_mixture_experiments/1_chain/5_comp/NUTS/5comp_equal_K5_seed42/results
+    --outdir hbmnl_mixture_experiments/2_chains/5_comp/NUTS/5comp_equal_K5_seed42/results
 
 # Full argument reference (all flags with their defaults)
 uv run python run_single_experiment.py \
     --scenario 5comp_equal \        # name from experiment_configs.SCENARIOS
     --k-model 5 \                   # K_MODEL - number of components the model fits
     --sampler nuts \                # nuts | hmc | bayesm_gibbs
-    --chains 1 \                    # number of MCMC chains
+    --chains 2 \                    # number of MCMC chains
     --warmup 2000 \                 # warmup / adaptation draws per chain (min ~200)
     --posterior 10000 \             # posterior draws per chain to keep
     --seed 42 \                     # RNG seed
@@ -343,7 +343,7 @@ Writes into `--outdir`:
 ### The full batch
 
 `run_all_experiments.py` defines the experiment grid
-(`{1, 2, 4} chains × {1,2,3,5} components`, samplers selectable via
+(`chain count × {1,2,3,5} components`, samplers selectable via
 `--samplers nuts,hmc,bayesm_gibbs,bayesm`) and runs each fit as a
 **separate subprocess**, so JAX memory is released between fits and a hard crash in
 one fit cannot kill the batch. Output folders per sampler: `NUTS/`, `HMC/`,
@@ -459,12 +459,12 @@ uv run python execute_analysis_notebooks.py --force
 uv run python execute_analysis_notebooks.py --timeout 900
 
 # Only target notebooks whose path contains a given substring
-uv run python execute_analysis_notebooks.py --filter 1_chain/2_comp
+uv run python execute_analysis_notebooks.py --filter 2_chains/2_comp
 uv run python execute_analysis_notebooks.py --filter NUTS
 uv run python execute_analysis_notebooks.py --filter 3comp_equal
 
 # Combine flags freely
-uv run python execute_analysis_notebooks.py --filter 1_chain/2_comp --timeout 1200
+uv run python execute_analysis_notebooks.py --filter 2_chains/2_comp --timeout 1200
 uv run python execute_analysis_notebooks.py --filter NUTS --force
 
 # Execute a different notebook filename instead of analysis.ipynb
@@ -652,7 +652,7 @@ Reload a saved fit into a notebook and feed it straight into `src/analysis.py`:
 
 ```python
 import pickle, json, pathlib
-run = pathlib.Path("hbmnl_mixture_experiments/1_chain/5_comp/NUTS/5comp_equal_K5_seed42/results")
+run = pathlib.Path("hbmnl_mixture_experiments/2_chains/5_comp/NUTS/5comp_equal_K5_seed42/results")
 
 posterior_samples = pickle.load(open(run / "posterior_raw.pkl", "rb"))  # numpy dict
 mcmc_results      = pickle.load(open(run / "mcmc_results.pkl", "rb"))    # Goose object
