@@ -1,29 +1,3 @@
-"""
-Orchestrate a batch of mixture-HBMNL experiments overnight, across every
-sampler: nuts, hmc, bayesm_gibbs (Liesel, via run_single_experiment.py)
-and bayesm (R, via run_single_bayesm_experiment.py -> rhierMnlRwMixture).
-
-Runs every experiment in the grid as a SEPARATE SUBPROCESS (one process per
-fit) so that:
-  * JAX/host memory is fully released between fits,
-  * a hard crash, OOM, or segfault in one fit cannot kill the whole batch,
-  * each fit gets a clean recompilation state.
-
-Features
-  * Resumable  : experiments whose outdir already has status=="success" are
-                 skipped, so you can re-run after a power loss and continue.
-  * Robust     : each subprocess has a timeout; failures are logged and the
-                 batch moves on.
-  * Auditable  : a master log + manifest.csv summarise every run.
-
-Usage
-    uv run python run_all_experiments.py                    # run the grid
-    uv run python run_all_experiments.py --dry-run          # print plan only
-    uv run python run_all_experiments.py --force             # re-run even if done
-    uv run python run_all_experiments.py --strategy known
-    uv run python run_all_experiments.py --samplers bayesm   # R side, same grid/CLI
-"""
-
 import argparse
 import csv
 import datetime

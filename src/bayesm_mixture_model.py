@@ -1,33 +1,3 @@
-"""
-Bayesian Hierarchical Multinomial Logit (HBMNL) with a mixture-of-normals
-heterogeneity distribution — AUGMENTED parameterisation matching bayesm.
-
-This is the model exactly as bayesm::rhierMnlRwMixture samples it: the
-component allocation ind_i is an EXPLICIT latent variable (Rossi 2006,
-Eq. 5.5.4 DAG), instead of being marginalised out via MixtureSameFamily as
-in src.mixturemodel.build_mixture_hbmnl_model:
-
-    ind_i  ~ Categorical(pvec)
-    beta_i = Z[i] @ Delta + u_i,   u_i | ind_i ~ N(mu_{ind_i}, Sigma_{ind_i})
-
-Marginally over ind the posterior of (pvec, mu_k, Sigma_k, Delta, beta_i) is
-IDENTICAL to the marginalised model, so results are directly comparable.
-The explicit allocations exist so that the conjugate data-augmentation Gibbs
-sweep of bayesm (Rossi Eq. 5.5.7 / 5.5.9-5.5.18) can be run on the model via
-src.inference.bayesm_gibbs.run_bayesm_gibbs_inference_mixture_hbmnl — and so
-that allocation draws are available for label.switching post-processing.
-
-Prior structure (identical to the marginalised builder and to bayesm defaults):
-
-    Wishart:   Sigma_k^{-1} ~ W(nu, V^{-1}),  nu = n_params + 3,  V = nu * I
-    Normal:    mu_k | Sigma_k ~ N(0, Sigma_k / a_mu)
-    Normal:    Delta          ~ N(0, (1/A_delta) * I)
-    Dirichlet: pvec           ~ Dir(dirichlet_a)
-
-NOTE: ind is a discrete parameter. It can only be updated by a Gibbs kernel —
-gradient-based kernels (NUTS/HMC) must never own the "ind" position key.
-"""
-
 import numpy as np
 import jax.numpy as jnp
 

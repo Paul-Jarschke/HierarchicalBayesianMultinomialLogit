@@ -1,29 +1,3 @@
-"""
-Initial values for the NUTS/HMC arms (src.mixturemodel's marginalised model),
-reproducing Rossi/bayesm's own initialisation scheme (rhierMnlRwMixture.R):
-
-    beta_i  <- per-unit fractional-likelihood MLE      (bayesm's oldbetas)
-    ind     <- contiguous equal-size blocks by index    (bayesm's ind)
-    pvec    <- uniform 1/K                              (bayesm's oldprob)
-    Delta   <- zero                                     (bayesm's olddelta;
-                                                          also the model's
-                                                          own default)
-
-beta_i/ind/pvec/Delta are all DETERMINISTIC and IDENTICAL across chains,
-matching bayesm's own multi-chain convention (run_single_bayesm_experiment.R
-computes oldbetas/ind/oldprob once, shared by every seeded chain -- only the
-RNG stream differs downstream).
-
-Rossi's algorithm never separately initialises mu_k/Sigma_k: they are the
-OUTPUT of the very first Gibbs draw, conditional on (ind, beta_i). NUTS/HMC
-have no Gibbs step, so a starting value is required where Rossi's algorithm
-has none; this module reproduces that exact first draw once per chain, using
-each chain's own seed -- precisely what bayesm's per-chain RNG stream would
-produce for iteration 1's mu_k/Sigma_k under set.seed(cseed). The draw is
-_niw_conjugate_draw from bayesm_gibbs.py, the same formula the Gibbs arm
-itself runs every sweep.
-"""
-
 import jax
 import jax.numpy as jnp
 import tensorflow_probability.substrates.jax.bijectors as tfb

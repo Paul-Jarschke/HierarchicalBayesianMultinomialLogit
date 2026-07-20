@@ -1,27 +1,3 @@
-"""
-Copy notebook templates into every folder that should have them.
-
-`analysis.ipynb` and `label_switching.ipynb` are per-run notebooks: one per
-<sampler>/<run>/ folder (found via <run>/results/posterior_raw.pkl). Each is
-self-configuring - it reads meta.json at runtime to locate its own artifacts.
-
-`full_marginal_comparison.ipynb` and `model_comparison.ipynb` are per-<k>_comp
-notebooks: each contrasts the sampler runs that sit side by side in one <k>_comp
-folder, so a single copy is placed at that level rather than per-run.
-`full_marginal_comparison.ipynb` runs the comparison on two grids - the full,
-unbounded envelope over every component, and a Chebyshev-filtered window
-(mean +/- 5 std, >=96% density guarantee) that keeps sampler-outlier tails from
-dominating the unbounded pass.
-
-Usage
-    uv run python distribute_notebooks.py                              # all templates, copy where missing
-    uv run python distribute_notebooks.py --which analysis             # just one
-    uv run python distribute_notebooks.py --which analysis,label_switching
-    uv run python distribute_notebooks.py --force                      # overwrite existing
-    uv run python distribute_notebooks.py --dry-run                    # list targets only
-    uv run python distribute_notebooks.py --which analysis --name custom.ipynb
-"""
-
 import argparse
 import pathlib
 import shutil

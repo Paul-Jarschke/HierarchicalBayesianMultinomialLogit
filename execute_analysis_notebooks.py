@@ -1,23 +1,3 @@
-"""
-Execute all analysis.ipynb notebooks found under hbmnl_mixture_experiments/.
-
-Each notebook is run in-place (outputs embedded back into the .ipynb file)
-using jupyter nbconvert. The notebook's own folder is used as cwd so that
-_resolve_run_dir() falls back correctly when __vsc_ipynb_file__ is absent.
-
-A notebook is considered already executed when at least one code cell has a
-non-null execution_count — which nbconvert always sets on a successful run.
-By default, already-executed notebooks are skipped; use --force to re-run them.
-
-Usage
-    uv run python execute_analysis_notebooks.py              # skip already executed
-    uv run python execute_analysis_notebooks.py --force      # re-run all
-    uv run python execute_analysis_notebooks.py --dry-run    # list targets
-    uv run python execute_analysis_notebooks.py --timeout 900
-    uv run python execute_analysis_notebooks.py --filter 1_chain/2_comp
-    uv run python execute_analysis_notebooks.py --name label_switching.ipynb  # run the relabeling notebooks
-"""
-
 import argparse
 import json
 import pathlib

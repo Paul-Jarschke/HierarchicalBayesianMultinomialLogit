@@ -1,26 +1,3 @@
-"""
-Label-switching post-processing for the mixture WEIGHTS pvec (Papastamoulis &
-Iliopoulos 2010; Papastamoulis 2016, JSS - the `label.switching` R package).
-Only pvec is relabeled; component means/covariances are not post-processed -
-all other inference in the study uses label-invariant functionals
-(analysis.invariant_convergence_summary). Input draws are never mutated.
-
-Method: ECR iterative version 1 (Papastamoulis 2016, Algorithm 5) on HARD
-allocations z[t,i] = argmax_k r_{tik}. Liesel marginalizes the allocations, so
-responsibilities are reconstructed post-hoc: r_{tik} ∝ pvec_{tk} *
-N(beta_{ti}; mu_{tk} + Z_i @ Delta_t, Sigma_{tk}) - the Z@Delta term is
-required (Rossi Eq. 5.5.19). The same reconstruction serves NUTS, HMC and
-bayesm (bayesm's own sampled z is ignored). Hard allocations tolerate the
-reconstruction noise better than the soft probabilities `ecr.iterative.2`
-needs. Empty components under K_MODEL > K_TRUE claim no observations and need
-no special casing.
-
-Relabeling removes PERMUTATION ambiguity only, not genuine MULTIMODALITY
-(chains in different partition modes); the report distinguishes the two.
-
-Dependencies: numpy, scipy, arviz.
-"""
-
 import numpy as np
 import pandas as pd
 import arviz as az

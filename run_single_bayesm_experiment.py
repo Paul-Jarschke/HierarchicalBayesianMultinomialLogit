@@ -1,29 +1,3 @@
-"""
-Run ONE mixture-HBMNL fit with bayesm and persist the SAME artifacts the Liesel
-runner does, so the same analysis notebook + src/analysis.py apply to both.
-
-This is the bayesm counterpart of run_single_experiment.py. It:
-  1. invokes run_single_bayesm_experiment.R as a subprocess (pure sampling),
-     which dumps raw float64 draws + dims.json/meta_r.json into <outdir>/_bayesm_raw/,
-  2. converts those raw draws into the canonical posterior_raw.pkl dict, with the
-     EXACT keys/shapes the Liesel pipeline produces:
-         mu_k                     (chains, draws, K, P)
-         sigma_inv_chol_k_latent  (chains, draws, K, P(P+1)/2)  - TFP FillScaleTriL
-         pvec                     (chains, draws, K)
-         Delta                    (chains, draws, D, P)         - only if demographics
-         beta_i                   (chains, draws, N, P)
-  3. writes export.pkl (via the shared export_posterior_to_pickle), meta.json,
-     status.json, summary.txt and sampling.log - same names the notebook expects.
-
-The crucial detail: bayesm samples Sigma_k directly (Gibbs), with no Cholesky-of-
-precision latent. We rebuild that latent so the SAME analysis code can invert it
-back to Sigma. R exports the precision Sigma^{-1} = rooti @ rooti.T (bayesm's own
-definition); here we take its lower Cholesky L (L L.T = precision) and map it
-through FillScaleTriL().inverse - the exact representation the Liesel model stores.
-
-Invoked by run_all_experiments.py (--samplers bayesm) as a subprocess (one process per fit).
-"""
-
 import argparse
 import datetime
 import json

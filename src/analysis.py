@@ -1,27 +1,3 @@
-"""
-Diagnostics and parameter-recovery utilities for the mixture HBMNL model.
-
-Convention used throughout
---------------------------
-    K       — number of MODEL components (K_MODEL).
-              Drives every loop over posterior draws.
-              Posterior arrays always have this many components.
-    K_true  — number of TRUE components in the data-generating process.
-              Ground-truth arrays (true_mu, true_pvec, true_sigma) have only K_true entries.
-              When K_MODEL > K_true the extra model components are "spurious":
-              They have no true counterpart, so truth overlays are skipped for them rather than indexing out of bounds.
-
-Functions that overlay ground truth (summarize_mu_k, plot_pvec_diagnostics,
-summarize_pvec) therefore take an optional `K_true` argument. If it is omitted
-they fall back to assuming K == K_true (the correctly-specified case).
-
-Plain (non-K-indexed) counterparts - summarize_mu, plot_mu_diagnostics,
-plot_cholesky_trace, recover_covariance_matrix - serve the standard
-(single-component) HBMNL model, where posterior arrays have no component axis
-at all. Delta and beta_i diagnostics have no component axis and are shared by
-both models.
-"""
-
 import jax
 import jax.numpy as jnp
 import numpy as np

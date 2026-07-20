@@ -1,23 +1,3 @@
-"""
-Run ONE mixture-HBMNL experiment and persist EVERYTHING needed to analyse it
-later — including the console/diagnostic output you'd normally watch live.
-
-Invoked by run_all_experiments.py as a subprocess (one process per fit).
-
-Writes into --outdir:
-    mcmc_results.pkl    full Goose results object (warmup, tuning, errors, draws)
-    posterior_raw.pkl   posterior draws (all params) as numpy arrays
-    export.pkl          mu/sigma/std/pvec for marginal-density comparison
-    sampling.log        clean Goose engine log (epochs + per-kernel error counts)
-    summary.txt         human-readable headline: dims, config, timing, errors
-    meta.json           structured config + dimensions + timing + parsed errors
-    status.json         {"status": "success"|"failed", ...}  (used for resume)
-
-The orchestrator additionally captures this process's full stdout+stderr into
-<outdir>/run.log, so nothing is lost either way; sampling.log and summary.txt
-are the *clean* views for fast review.
-"""
-
 import argparse
 import datetime
 import json

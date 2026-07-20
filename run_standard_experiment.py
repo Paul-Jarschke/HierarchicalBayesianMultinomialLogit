@@ -1,37 +1,3 @@
-"""
-Run ONE standard (one-normal-component, no mixture) HBMNL fit and persist the
-same artifacts as the mixture pipeline, so the same analysis notebooks and
-tooling apply to both.
-
-Samplers:
-    nuts / hmc : src.standardmodel (Liesel/Goose), sampled in this process.
-    bayesm     : rhierMnlRwMixture with ncomp = 1, via the R bridge
-                 (run_single_bayesm_experiment.py) as a subprocess. All three
-                 samplers fit the identical model (see src/standardmodel.py)
-                 on the identical dataset. The bridge's mixture-style output
-                 (K = 1 component axis) is post-processed to the plain
-                 single-component keys, so all three arms share one format.
-
-Data: data/simulated/mixture/standard.json (generated on first use from
-src.dgp.generate_standard_simulated_data, seed 42). It lives beside the
-mixture scenarios so the R bridge's default data directory finds it.
-
-Writes into --outdir (default hbmnl_normal_experiments/<SAMPLER>/standard_seed<seed>/results):
-    mcmc_results.pkl    full Goose results object            (nuts/hmc only)
-    posterior_raw.pkl   posterior draws as numpy arrays, plain single-component
-                        keys: mu (C,S,P), sigma_inv_chol_latent (C,S,nlat),
-                        Delta (C,S,D,P), beta_i (C,S,N,P)
-    sampling.log        engine log
-    summary.txt         human-readable headline
-    meta.json           structured config + timing + parsed errors
-    status.json         {"status": "success"|"failed", ...}
-
-Usage
-    uv run python run_standard_experiment.py --sampler hmc
-    uv run python run_standard_experiment.py --sampler nuts
-    uv run python run_standard_experiment.py --sampler bayesm
-"""
-
 import argparse
 import datetime
 import json

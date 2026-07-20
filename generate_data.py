@@ -1,24 +1,3 @@
-"""
-Generate simulation datasets for the HBMNL mixture comparison study.
-
-Reads scenario definitions from:
-    hbmnl_mixture_experiments/experiment_configs.py
-
-Writes JSON files to:
-    data/simulated/mixture/<scenario_name>.json
-
-Usage
------
-    # Generate all scenarios
-    uv run python generate_data.py
-
-    # Generate a single scenario
-    uv run python generate_data.py --scenario 2comp_equal
-
-    # List all available scenarios without generating
-    uv run python generate_data.py --list
-"""
-
 import argparse
 import os
 import sys

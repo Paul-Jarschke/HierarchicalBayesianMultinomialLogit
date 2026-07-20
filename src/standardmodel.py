@@ -1,26 +1,3 @@
-"""
-Bayesian Hierarchical Multinomial Logit (HBMNL) with a SINGLE multivariate
-normal heterogeneity distribution (no mixture) — Rossi (2006) §5.4:
-
-    beta_i = mu + Z[i] @ Delta + u_i,   u_i ~ N(0, Sigma)
-
-Prior structure — EXACTLY the model bayesm::rhierMnlRwMixture fits with
-ncomp = 1:
-
-    Wishart:  Sigma^{-1}  ~ W(nu, V^{-1}),  nu = n_params + 3,  V = nu * I
-    Normal:   mu | Sigma  ~ N(0, Sigma / a_mu)          (bayesm's Amu)
-    Normal:   Delta       ~ N(0, (1/A_delta) * I)       (bayesm's Ad)
-
-Z is centred with no intercept column (the repo-wide convention); mu carries
-the population mean. There is one component, so no parameter carries a
-component axis or a _k suffix: mu (P,), sigma_inv_chol (P, P) with latent
-sigma_inv_chol_latent, Delta (n_demos, P), beta_i (n_units, P).
-
-Sampling functions for NUTS and fixed-step HMC live in this module too. The
-Cholesky-of-precision block uses a dense mass matrix (its latent entries are
-correlated; a diagonal metric produces divergences on this block).
-"""
-
 import jax.numpy as jnp
 
 import liesel.model as lsl
