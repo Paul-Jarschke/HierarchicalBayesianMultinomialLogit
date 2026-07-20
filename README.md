@@ -101,7 +101,7 @@ HierarchicalBayesianMNL/
 │   ├── analysis_template.ipynb                    # per-run diagnostics / recovery notebook (mixture)
 │   ├── standard_analysis_template.ipynb           # per-run diagnostics notebook (standard model)
 │   ├── label_switching_template.ipynb             # per-run pvec relabeling notebook (ECR, Algorithm 5)
-│   ├── full_marginal_comparison_template.ipynb    # per-<k>_comp marginal-density comparison notebook
+│   ├── marginal_comparison_template.ipynb         # per-<k>_comp marginal-density comparison notebook
 │   └── standard_model_comparison_template.ipynb   # cross-sampler comparison for the standard model
 │
 ├── pyproject.toml / uv.lock            # Python dependencies (uv)
@@ -119,7 +119,7 @@ HierarchicalBayesianMNL/
 │   ├── experiment_configs.py           # single source of truth for all scenarios
 │   └── 2_chains/                       # by chain count
 │       └── {1,2,3,5}_comp/             # by true component count
-│           ├── full_marginal_comparison.ipynb  # cross-sampler comparison (one per <k>_comp)
+│           ├── marginal_comparison.ipynb  # cross-sampler comparison (one per <k>_comp)
 │           └── {NUTS, HMC, bayesm, replication}/  # by sampler
 │               └── <run>/              # e.g. 5comp_equal_K5_seed42/
 │                   ├── results/        # all artifacts (posterior_raw.pkl, meta.json, ...)
@@ -150,7 +150,7 @@ HierarchicalBayesianMNL/
 
 Each run folder holds a `results/` directory (all batch output) plus its two
 self-configuring notebooks (`analysis.ipynb`, `label_switching.ipynb`); the
-cross-sampler `full_marginal_comparison.ipynb` sits one level up, one per `<k>_comp`.
+cross-sampler `marginal_comparison.ipynb` sits one level up, one per `<k>_comp`.
 
 ---
 
@@ -522,15 +522,15 @@ uv run python scripts/execute_analysis_notebooks.py --name label_switching.ipynb
 
 ### Marginal-density comparison notebooks
 
-`full_marginal_comparison.ipynb` contrasts the NUTS, HMC, bayesm and replication
+`marginal_comparison.ipynb` contrasts the NUTS, HMC, bayesm and replication
 runs that sit side by side, so **one notebook is placed per `<chains>/<k>_comp/`
 folder** (above the sampler folders), not per run. It computes the marginal
 posterior densities of `beta` (Rossi Eq. 5.5.19), the mixture moments
 (Eq. 5.5.2), and the distance of **every sampler's marginal to the True DGP
-marginal** (never sampler-vs-sampler): Hellinger, KL(model‖true),
-Jensen-Shannon, total-variation and Wasserstein-1. The logic lives in
+marginal** (never sampler-vs-sampler): KL(model‖true) and total-variation.
+The logic lives in
 `src/marginal_comparison.py`; the template is
-`templates/full_marginal_comparison_template.ipynb`.
+`templates/marginal_comparison_template.ipynb`.
 
 Every quantity here is **label-invariant** (a per-draw permutation of components
 leaves it unchanged), so relabeling/ECR is unnecessary and would give identical
@@ -574,18 +574,18 @@ It is distributed via the shared distributor's `--which` flag and run via the
 shared runner's `--name` flag:
 
 ```bash
-# Distribute full_marginal_comparison.ipynb into every <k>_comp folder
-uv run python scripts/distribute_notebooks.py --which full_marginal_comparison
-uv run python scripts/distribute_notebooks.py --which full_marginal_comparison --force
-uv run python scripts/distribute_notebooks.py --which full_marginal_comparison --dry-run
+# Distribute marginal_comparison.ipynb into every <k>_comp folder
+uv run python scripts/distribute_notebooks.py --which marginal_comparison
+uv run python scripts/distribute_notebooks.py --which marginal_comparison --force
+uv run python scripts/distribute_notebooks.py --which marginal_comparison --dry-run
 
 # Run all marginal-comparison notebooks (skips already-executed; --force to re-run)
-uv run python scripts/execute_analysis_notebooks.py --name full_marginal_comparison.ipynb --timeout 1200
-uv run python scripts/execute_analysis_notebooks.py --name full_marginal_comparison.ipynb --force --timeout 1200
+uv run python scripts/execute_analysis_notebooks.py --name marginal_comparison.ipynb --timeout 1200
+uv run python scripts/execute_analysis_notebooks.py --name marginal_comparison.ipynb --force --timeout 1200
 
 # Full refresh from the template, then run all
-uv run python scripts/distribute_notebooks.py --which full_marginal_comparison --force
-uv run python scripts/execute_analysis_notebooks.py --name full_marginal_comparison.ipynb --force --timeout 1200
+uv run python scripts/distribute_notebooks.py --which marginal_comparison --force
+uv run python scripts/execute_analysis_notebooks.py --name marginal_comparison.ipynb --force --timeout 1200
 ```
 
 ---

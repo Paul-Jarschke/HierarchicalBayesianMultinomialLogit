@@ -7,7 +7,7 @@ import pandas as pd
 import xarray as xr
 import arviz as az
 from scipy.special import ndtr
-from scipy.stats import norm, wasserstein_distance
+from scipy.stats import norm
 
 from src import analysis
 
@@ -128,8 +128,8 @@ def build_grids_full(fitted_models, true_model=None, n_grid=4000, n_sigma=6):
     spans the FULL support of EVERY component of EVERY model (all K, including the
     surplus/empty ones when K_MODEL > K_TRUE) AND of the true DGP, using the raw
     min/max envelope (mu +/- n_sigma*std, no trimming). Nothing is excluded, so
-    every distance metric (Hellinger, KL, JSD, TVD, Wasserstein-1) integrates over
-    the ENTIRE marginal distribution - the true marginal's full tails plus any
+    every distance metric (KL, TVD) integrates over the ENTIRE marginal
+    distribution - the true marginal's full tails plus any
     diffuse model mass - rather than only the fitted live-component region.
 
     Caveat: when K_MODEL > K_TRUE the surplus components carry huge prior-driven
@@ -261,16 +261,12 @@ def _kl_div(a, b, x):
 
 def density_distances(d_model, d_true, x):
     """Distances of a model marginal to the TRUE marginal on shared grid x.
-    KL is KL(model || true). Returns Hellinger (primary), KL, JSD, TVD, Wasserstein-1."""
+    KL is KL(model || true). Returns KL, TVD."""
     p = _norm_pdf(d_model, x)   # model
     q = _norm_pdf(d_true, x)    # true DGP
-    m = 0.5 * (p + q)
-    hell = np.sqrt(max(0.5 * np.trapz((np.sqrt(p) - np.sqrt(q)) ** 2, x), 0.0))
-    kl   = _kl_div(p, q, x)                                   # KL(model || true)
-    jsd  = 0.5 * _kl_div(p, m, x) + 0.5 * _kl_div(q, m, x)
-    tvd  = 0.5 * np.trapz(np.abs(p - q), x)
-    w1   = wasserstein_distance(x, x, u_weights=np.clip(p, 0, None), v_weights=np.clip(q, 0, None))
-    return {"Hellinger": hell, "KL": kl, "JSD": jsd, "TVD": tvd, "Wasserstein1": w1}
+    kl  = _kl_div(p, q, x)                                    # KL(model || true)
+    tvd = 0.5 * np.trapz(np.abs(p - q), x)
+    return {"KL": kl, "TVD": tvd}
 
 
 def distance_table(models, true_model, grids, param_names, dens=None, dens_true=None):

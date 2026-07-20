@@ -17,8 +17,8 @@ NOTEBOOKS = {
     "analysis":            ("analysis_template.ipynb",            "analysis.ipynb",            "run"),
     "standard_analysis":   ("standard_analysis_template.ipynb",    "analysis.ipynb",            "run"),
     "label_switching":     ("label_switching_template.ipynb",      "label_switching.ipynb",      "run"),
-    "full_marginal_comparison": (
-        "full_marginal_comparison_template.ipynb", "full_marginal_comparison.ipynb", "k_comp",
+    "marginal_comparison": (
+        "marginal_comparison_template.ipynb", "marginal_comparison.ipynb", "k_comp",
     ),
     "standard_model_comparison": (
         "standard_model_comparison_template.ipynb", "model_comparison.ipynb", "k_comp",
