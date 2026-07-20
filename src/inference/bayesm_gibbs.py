@@ -248,7 +248,7 @@ def run_bayesm_gibbs_inference_mixture_hbmnl(
     softmax_c = tfb.SoftmaxCentered()
 
     print("Starting bayesm-exact Gibbs sampling for mixture HBMNL "
-          "(rhierMnlRwMixture port)...")
+          "(rhierMnlRwMixture implementation)...")
     print(f" - Demographic covariates (Delta) included : {has_Z}")
     print(f" - Model components (K_MODEL)              : {K}")
     print(f" - RW scale s: {s:.4f} | fractional weight w: {w}")

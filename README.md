@@ -6,7 +6,7 @@ on identical data:
 - **bayesm** (R) — Gibbs sampler with a random-walk Metropolis step for the choice
   coefficients (`rhierMnlRwMixture`, Rossi 2006)
 - **Liesel / Goose** (Python) — gradient-based MCMC: NUTS and fixed-step HMC
-- **replication** (Python) — a line-faithful Liesel port of bayesm's hybrid
+- **replication** (Python) — a faithful Liesel implementation of bayesm's hybrid
   Gibbs + RW-Metropolis sampler (`src/inference/bayesm_gibbs.py`), isolating
   implementation effects from algorithm effects
 
