@@ -1,9 +1,14 @@
 import argparse
 import os
+import pathlib
 import sys
 
-# Ensure src/ is importable when running from the project root
-PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
+PROJECT_ROOT = next(
+    p for p in [pathlib.Path(__file__).resolve(), *pathlib.Path(__file__).resolve().parents]
+    if (p / "pyproject.toml").exists()
+)
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.dgp import generate_mixture_simulated_data, save_to_json
 from hbmnl_mixture_experiments.experiment_configs import SCENARIOS

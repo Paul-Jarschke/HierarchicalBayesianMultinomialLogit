@@ -95,7 +95,7 @@ def _bayesm_to_plain_keys(outdir: pathlib.Path):
 def run_bayesm(args, outdir: pathlib.Path) -> int:
     """rhierMnlRwMixture with ncomp=1 via the R bridge subprocess."""
     cmd = [
-        sys.executable, "-u", str(PROJECT_ROOT / "run_single_bayesm_experiment.py"),
+        sys.executable, "-u", str(PROJECT_ROOT / "scripts" / "run_single_bayesm_experiment.py"),
         "--scenario", "standard",
         "--k-model", "1",
         "--chains", str(args.chains),

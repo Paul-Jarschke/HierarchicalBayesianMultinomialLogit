@@ -22,7 +22,7 @@ PROJECT_ROOT = next(
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-R_SCRIPT = PROJECT_ROOT / "run_single_bayesm_experiment.R"
+R_SCRIPT = PROJECT_ROOT / "scripts" / "run_single_bayesm_experiment.R"
 
 # Rscript location: env override wins, else the known Windows install, else PATH.
 import os

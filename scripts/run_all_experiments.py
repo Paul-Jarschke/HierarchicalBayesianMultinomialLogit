@@ -13,8 +13,8 @@ PROJECT_ROOT = next(
     p for p in [pathlib.Path(__file__).resolve(), *pathlib.Path(__file__).resolve().parents]
     if (p / "pyproject.toml").exists()
 )
-LIESEL_RUNNER = PROJECT_ROOT / "run_single_experiment.py"
-BAYESM_RUNNER = PROJECT_ROOT / "run_single_bayesm_experiment.py"
+LIESEL_RUNNER = PROJECT_ROOT / "scripts" / "run_single_experiment.py"
+BAYESM_RUNNER = PROJECT_ROOT / "scripts" / "run_single_bayesm_experiment.py"
 RESULTS_ROOT  = PROJECT_ROOT / "hbmnl_mixture_experiments"
 LOG_DIR       = PROJECT_ROOT / "batch_logs"
 

@@ -44,7 +44,7 @@ surplus components must collapse.
 
 - [Graphviz](https://graphviz.org/download/) - the `dot` binary must be on `PATH`
   (Windows: `winget install Graphviz.Graphviz`, then reopen the terminal). Only
-  needed to run `plot_model_graphs.py`; `pydot` (the Python side) is already
+  needed to run `scripts/plot_model_graphs.py`; `pydot` (the Python side) is already
   pinned in `uv.lock`.
 
 ---
@@ -86,20 +86,23 @@ library under `renv/library/`, isolated from your global R packages.
 ```
 HierarchicalBayesianMNL/
 │
-├── generate_data.py                    # CLI - generates all simulation datasets
-├── run_single_experiment.py            # runs ONE Liesel fit (nuts | hmc | bayesm_gibbs), saves all output
-├── run_single_bayesm_experiment.py     # runs ONE bayesm fit: drives the R sampler, writes canonical artifacts
-├── run_single_bayesm_experiment.R      # bayesm rhierMnlRwMixture sampler (per chain, seed loop)
-├── run_standard_experiment.py          # runs ONE standard (one-component) fit (nuts | hmc | bayesm)
-├── run_all_experiments.py              # batch orchestrator, all samplers (--samplers selects which)
-├── analysis_template.ipynb             # per-run diagnostics / recovery notebook (mixture)
-├── standard_analysis_template.ipynb    # per-run diagnostics notebook (standard model)
-├── label_switching_template.ipynb      # per-run pvec relabeling notebook (ECR, Algorithm 5)
-├── full_marginal_comparison_template.ipynb   # per-<k>_comp marginal-density comparison notebook
-├── standard_model_comparison_template.ipynb  # cross-sampler comparison for the standard model
-├── distribute_notebooks.py             # copies templates -> <run>/ or <k>_comp/ (--which selects which)
-├── execute_analysis_notebooks.py       # runs notebooks in-place via nbconvert (--name selects which)
-├── plot_model_graphs.py                # renders the three model DAGs -> model_graphs/ (needs Graphviz)
+├── scripts/
+│   ├── generate_data.py                 # CLI - generates all simulation datasets
+│   ├── run_single_experiment.py         # runs ONE Liesel fit (nuts | hmc | bayesm_gibbs), saves all output
+│   ├── run_single_bayesm_experiment.py  # runs ONE bayesm fit: drives the R sampler, writes canonical artifacts
+│   ├── run_single_bayesm_experiment.R   # bayesm rhierMnlRwMixture sampler (per chain, seed loop)
+│   ├── run_standard_experiment.py       # runs ONE standard (one-component) fit (nuts | hmc | bayesm)
+│   ├── run_all_experiments.py           # batch orchestrator, all samplers (--samplers selects which)
+│   ├── distribute_notebooks.py          # copies templates -> <run>/ or <k>_comp/ (--which selects which)
+│   ├── execute_analysis_notebooks.py    # runs notebooks in-place via nbconvert (--name selects which)
+│   └── plot_model_graphs.py             # renders the three model DAGs -> model_graphs/ (needs Graphviz)
+│
+├── templates/
+│   ├── analysis_template.ipynb                    # per-run diagnostics / recovery notebook (mixture)
+│   ├── standard_analysis_template.ipynb           # per-run diagnostics notebook (standard model)
+│   ├── label_switching_template.ipynb             # per-run pvec relabeling notebook (ECR, Algorithm 5)
+│   ├── full_marginal_comparison_template.ipynb    # per-<k>_comp marginal-density comparison notebook
+│   └── standard_model_comparison_template.ipynb   # cross-sampler comparison for the standard model
 │
 ├── pyproject.toml / uv.lock            # Python dependencies (uv)
 ├── renv.lock / .Rprofile / renv/       # R dependencies (renv)
@@ -154,13 +157,13 @@ cross-sampler `full_marginal_comparison.ipynb` sits one level up, one per `<k>_c
 ## Generating Simulation Data
 
 All scenarios are defined in `hbmnl_mixture_experiments/experiment_configs.py`.
-`generate_data.py` reads those configs and writes datasets to
+`scripts/generate_data.py` reads those configs and writes datasets to
 `data/simulated/mixture/`.
 
 ```bash
-uv run python generate_data.py --list           # list available scenarios
-uv run python generate_data.py                   # generate all scenarios
-uv run python generate_data.py --scenario 2comp_equal   # generate one
+uv run python scripts/generate_data.py --list           # list available scenarios
+uv run python scripts/generate_data.py                   # generate all scenarios
+uv run python scripts/generate_data.py --scenario 2comp_equal   # generate one
 ```
 
 This writes `1comp.json`, `2comp_equal.json`, `3comp_equal.json`, and
@@ -260,7 +263,7 @@ near the simplex corners and encourages spurious components to shrink.
 | NUTS          | `src/inference/nuts.py`         | Adaptive trajectory length; one NUTS kernel per block.                                          |
 | HMC           | `src/inference/hmc.py`          | Fixed-length leapfrog (default 10 integration steps) per block.                                 |
 | replication   | `src/inference/bayesm_gibbs.py` | bayesm-exact hybrid Gibbs (conjugate comps/ind/pvec/Delta) + per-unit RW-Metropolis for `beta_i`. |
-| bayesm        | `run_single_bayesm_experiment.R` | The shipped R implementation of `rhierMnlRwMixture`, driven via the Python bridge.             |
+| bayesm        | `scripts/run_single_bayesm_experiment.R` | The shipped R implementation of `rhierMnlRwMixture`, driven via the Python bridge.             |
 
 NUTS and HMC sample five gradient blocks separately - `pvec_latent`,
 `sigma_inv_chol_k_latent`, `mu_k`, `Delta` (if demographics present), `beta_i` -
@@ -274,7 +277,7 @@ deviates from its own book). All runners take an explicit `K`.
 ### Model graphs
 
 ```bash
-uv run python plot_model_graphs.py    # -> model_graphs/model_graph_{mixture,augmented,standard}.png
+uv run python scripts/plot_model_graphs.py    # -> model_graphs/model_graph_{mixture,augmented,standard}.png
 ```
 
 Renders the Liesel variable graph (`lsl.plot_vars`, Graphviz `dot` layout) for
@@ -293,14 +296,14 @@ so they can run unattended.
 
 ```bash
 # Minimal required arguments
-uv run python run_single_experiment.py \
+uv run python scripts/run_single_experiment.py \
     --scenario 5comp_equal \
     --k-model 5 \
     --sampler nuts \
     --outdir hbmnl_mixture_experiments/2_chains/5_comp/NUTS/5comp_equal_K5_seed42/results
 
 # Full argument reference (all flags with their defaults)
-uv run python run_single_experiment.py \
+uv run python scripts/run_single_experiment.py \
     --scenario 5comp_equal \        # name from experiment_configs.SCENARIOS
     --k-model 5 \                   # K_MODEL - number of components the model fits
     --sampler nuts \                # nuts | hmc | bayesm_gibbs
@@ -342,7 +345,7 @@ Writes into `--outdir`:
 
 ### The full batch
 
-`run_all_experiments.py` defines the experiment grid
+`scripts/run_all_experiments.py` defines the experiment grid
 (`chain count × {1,2,3,5} components`, samplers selectable via
 `--samplers nuts,hmc,bayesm_gibbs,bayesm`) and runs each fit as a
 **separate subprocess**, so JAX memory is released between fits and a hard crash in
@@ -350,10 +353,10 @@ one fit cannot kill the batch. Output folders per sampler: `NUTS/`, `HMC/`,
 `replication/` (for `bayesm_gibbs`) and `BAYESM/` inside each `<k>_comp`.
 
 ```bash
-uv run python run_all_experiments.py --dry-run        # print the plan only
-uv run python run_all_experiments.py                  # fixed5 (K_MODEL=5 everywhere)
-uv run python run_all_experiments.py --strategy known # fit K_MODEL = K_TRUE
-uv run python run_all_experiments.py --force          # re-run completed experiments
+uv run python scripts/run_all_experiments.py --dry-run        # print the plan only
+uv run python scripts/run_all_experiments.py                  # fixed5 (K_MODEL=5 everywhere)
+uv run python scripts/run_all_experiments.py --strategy known # fit K_MODEL = K_TRUE
+uv run python scripts/run_all_experiments.py --force          # re-run completed experiments
 ```
 
 Behaviour:
@@ -366,7 +369,7 @@ Behaviour:
   `batch_logs/batch_<stamp>.log` is the master log.
 
 Edit the grid, MCMC budget (`WARMUP`, `POSTERIOR`), priors, and `TIMEOUT_S` at the
-top of `run_all_experiments.py`.
+top of `scripts/run_all_experiments.py`.
 
 #### Overnight on a laptop
 
@@ -379,18 +382,18 @@ The run dies if the machine sleeps or the terminal closes. Before leaving it:
 
 ### The bayesm batch
 
-The bayesm side runs through the same `run_all_experiments.py` orchestrator as
+The bayesm side runs through the same `scripts/run_all_experiments.py` orchestrator as
 NUTS/HMC, via `--samplers bayesm`. It runs each fit as a separate subprocess via
-`run_single_bayesm_experiment.py`, which drives the R sampler
-(`run_single_bayesm_experiment.R`, `rhierMnlRwMixture`) and converts its draws into
+`scripts/run_single_bayesm_experiment.py`, which drives the R sampler
+(`scripts/run_single_bayesm_experiment.R`, `rhierMnlRwMixture`) and converts its draws into
 the **same** `posterior_raw.pkl` / `meta.json` artifacts the Liesel runs produce -
 so every downstream notebook treats bayesm exactly like NUTS/HMC.
 
 ```bash
-uv run python run_all_experiments.py --samplers bayesm --dry-run        # print the plan only
-uv run python run_all_experiments.py --samplers bayesm                  # fixed5 (K_MODEL=5 everywhere)
-uv run python run_all_experiments.py --samplers bayesm --strategy known # fit K_MODEL = K_TRUE
-uv run python run_all_experiments.py --samplers bayesm --force          # re-run completed experiments
+uv run python scripts/run_all_experiments.py --samplers bayesm --dry-run        # print the plan only
+uv run python scripts/run_all_experiments.py --samplers bayesm                  # fixed5 (K_MODEL=5 everywhere)
+uv run python scripts/run_all_experiments.py --samplers bayesm --strategy known # fit K_MODEL = K_TRUE
+uv run python scripts/run_all_experiments.py --samplers bayesm --force          # re-run completed experiments
 ```
 
 - Output lands in a `BAYESM/` folder beside `NUTS/` and `HMC/` in each `<k>_comp`;
@@ -399,7 +402,7 @@ uv run python run_all_experiments.py --samplers bayesm --force          # re-run
 - MCMC length: the R side keeps every raw draw, discards the first `BURN_IN`
   iterations, then thins by `THIN`, so retained draws/chain `= (R_TOTAL - BURN_IN) / THIN`
   (default `(42000 - 2000) / 4 = 10000`, matching the Liesel chains). Edit these at
-  the top of `run_all_experiments.py`.
+  the top of `scripts/run_all_experiments.py`.
 - Requires the R toolchain (renv restored). The Rscript path can be overridden via
   the `BAYESM_RSCRIPT` environment variable.
 
@@ -415,28 +418,28 @@ first; the label-switching commands are in their own subsection below.
 
 ### Distributing the template
 
-`distribute_notebooks.py --which analysis` copies `analysis_template.ipynb` as
+`scripts/distribute_notebooks.py --which analysis` copies `templates/analysis_template.ipynb` as
 `analysis.ipynb` into every run folder that contains a `posterior_raw.pkl`. The
 notebook is self-configuring: it reads `meta.json` at runtime to locate its
 own artifacts.
 
 ```bash
 # Preview which folders would receive a notebook
-uv run python distribute_notebooks.py --which analysis --dry-run
+uv run python scripts/distribute_notebooks.py --which analysis --dry-run
 
 # Copy where analysis.ipynb is missing (safe default)
-uv run python distribute_notebooks.py --which analysis
+uv run python scripts/distribute_notebooks.py --which analysis
 
 # Overwrite existing analysis.ipynb (e.g. after updating the template)
-uv run python distribute_notebooks.py --which analysis --force
+uv run python scripts/distribute_notebooks.py --which analysis --force
 
 # Write under a different filename instead of analysis.ipynb
-uv run python distribute_notebooks.py --which analysis --name custom.ipynb
+uv run python scripts/distribute_notebooks.py --which analysis --name custom.ipynb
 ```
 
 ### Executing the notebooks
 
-`execute_analysis_notebooks.py` runs every `analysis.ipynb` found under
+`scripts/execute_analysis_notebooks.py` runs every `analysis.ipynb` found under
 `hbmnl_mixture_experiments/` in-place via `jupyter nbconvert`, embedding the cell
 outputs back into the file. Each notebook is executed with its own run folder as
 the working directory so the self-resolution fallback works correctly.
@@ -447,29 +450,29 @@ By default, already-executed notebooks are skipped; use `--force` to re-run them
 
 ```bash
 # List all notebooks, showing whether each is pending or already executed
-uv run python execute_analysis_notebooks.py --dry-run
+uv run python scripts/execute_analysis_notebooks.py --dry-run
 
 # Execute only pending notebooks (default - skip already-executed ones)
-uv run python execute_analysis_notebooks.py
+uv run python scripts/execute_analysis_notebooks.py
 
 # Re-run all notebooks, including already-executed ones
-uv run python execute_analysis_notebooks.py --force
+uv run python scripts/execute_analysis_notebooks.py --force
 
 # Custom per-notebook timeout in seconds (default 600)
-uv run python execute_analysis_notebooks.py --timeout 900
+uv run python scripts/execute_analysis_notebooks.py --timeout 900
 
 # Only target notebooks whose path contains a given substring
-uv run python execute_analysis_notebooks.py --filter 2_chains/2_comp
-uv run python execute_analysis_notebooks.py --filter NUTS
-uv run python execute_analysis_notebooks.py --filter 3comp_equal
+uv run python scripts/execute_analysis_notebooks.py --filter 2_chains/2_comp
+uv run python scripts/execute_analysis_notebooks.py --filter NUTS
+uv run python scripts/execute_analysis_notebooks.py --filter 3comp_equal
 
 # Combine flags freely
-uv run python execute_analysis_notebooks.py --filter 2_chains/2_comp --timeout 1200
-uv run python execute_analysis_notebooks.py --filter NUTS --force
+uv run python scripts/execute_analysis_notebooks.py --filter 2_chains/2_comp --timeout 1200
+uv run python scripts/execute_analysis_notebooks.py --filter NUTS --force
 
 # Execute a different notebook filename instead of analysis.ipynb
 # (this is how the label-switching notebooks are run - see the subsection below)
-uv run python execute_analysis_notebooks.py --name label_switching.ipynb
+uv run python scripts/execute_analysis_notebooks.py --name label_switching.ipynb
 ```
 
 The script prints `OK (Xs)`, `FAILED (Xs)`, or `SKIP (already executed)` per
@@ -491,7 +494,7 @@ no-op), and saves `relabeled_pvec.pkl` additively. Allocations are
 reconstructed from the saved draws (`mu_k + Z@Delta`, `Sigma_k`, `pvec`,
 `beta_i`; Rossi Eq. 5.5.19), so the same notebook works for NUTS, HMC, bayesm
 and the replication. The logic lives in `src/label_switching.py`; the template
-is `label_switching_template.ipynb`.
+is `templates/label_switching_template.ipynb`.
 
 It is distributed via the `--which` flag of the shared distributor, and executed
 via the `--name` flag of the shared runner (so all of `--dry-run`, `--force`,
@@ -499,18 +502,18 @@ via the `--name` flag of the shared runner (so all of `--dry-run`, `--force`,
 
 ```bash
 # Distribute label_switching.ipynb into every run folder (--force to overwrite)
-uv run python distribute_notebooks.py --which label_switching
-uv run python distribute_notebooks.py --which label_switching --force
-uv run python distribute_notebooks.py --which label_switching --dry-run
+uv run python scripts/distribute_notebooks.py --which label_switching
+uv run python scripts/distribute_notebooks.py --which label_switching --force
+uv run python scripts/distribute_notebooks.py --which label_switching --dry-run
 
 # Run all label-switching notebooks (skips already-executed; --force to re-run all)
-uv run python execute_analysis_notebooks.py --name label_switching.ipynb
-uv run python execute_analysis_notebooks.py --name label_switching.ipynb --force
-uv run python execute_analysis_notebooks.py --name label_switching.ipynb --dry-run
+uv run python scripts/execute_analysis_notebooks.py --name label_switching.ipynb
+uv run python scripts/execute_analysis_notebooks.py --name label_switching.ipynb --force
+uv run python scripts/execute_analysis_notebooks.py --name label_switching.ipynb --dry-run
 
 # Full refresh from the template, then run all (use after editing the template)
-uv run python distribute_notebooks.py --which label_switching --force
-uv run python execute_analysis_notebooks.py --name label_switching.ipynb --force
+uv run python scripts/distribute_notebooks.py --which label_switching --force
+uv run python scripts/execute_analysis_notebooks.py --name label_switching.ipynb --force
 ```
 
 > Note: while executing notebooks in-place, keep the corresponding `.ipynb` tabs
@@ -527,7 +530,7 @@ posterior densities of `beta` (Rossi Eq. 5.5.19), the mixture moments
 marginal** (never sampler-vs-sampler): Hellinger, KL(model‖true),
 Jensen-Shannon, total-variation and Wasserstein-1. The logic lives in
 `src/marginal_comparison.py`; the template is
-`full_marginal_comparison_template.ipynb`.
+`templates/full_marginal_comparison_template.ipynb`.
 
 Every quantity here is **label-invariant** (a per-draw permutation of components
 leaves it unchanged), so relabeling/ECR is unnecessary and would give identical
@@ -572,17 +575,17 @@ shared runner's `--name` flag:
 
 ```bash
 # Distribute full_marginal_comparison.ipynb into every <k>_comp folder
-uv run python distribute_notebooks.py --which full_marginal_comparison
-uv run python distribute_notebooks.py --which full_marginal_comparison --force
-uv run python distribute_notebooks.py --which full_marginal_comparison --dry-run
+uv run python scripts/distribute_notebooks.py --which full_marginal_comparison
+uv run python scripts/distribute_notebooks.py --which full_marginal_comparison --force
+uv run python scripts/distribute_notebooks.py --which full_marginal_comparison --dry-run
 
 # Run all marginal-comparison notebooks (skips already-executed; --force to re-run)
-uv run python execute_analysis_notebooks.py --name full_marginal_comparison.ipynb --timeout 1200
-uv run python execute_analysis_notebooks.py --name full_marginal_comparison.ipynb --force --timeout 1200
+uv run python scripts/execute_analysis_notebooks.py --name full_marginal_comparison.ipynb --timeout 1200
+uv run python scripts/execute_analysis_notebooks.py --name full_marginal_comparison.ipynb --force --timeout 1200
 
 # Full refresh from the template, then run all
-uv run python distribute_notebooks.py --which full_marginal_comparison --force
-uv run python execute_analysis_notebooks.py --name full_marginal_comparison.ipynb --force --timeout 1200
+uv run python scripts/distribute_notebooks.py --which full_marginal_comparison --force
+uv run python scripts/execute_analysis_notebooks.py --name full_marginal_comparison.ipynb --force --timeout 1200
 ```
 
 ---
@@ -590,8 +593,8 @@ uv run python execute_analysis_notebooks.py --name full_marginal_comparison.ipyn
 ## The two bayesm arms
 
 **bayesm (R)** runs through the automated pipeline in
-[The bayesm batch](#the-bayesm-batch): `run_all_experiments.py --samplers bayesm` ->
-`run_single_bayesm_experiment.py` -> `run_single_bayesm_experiment.R`. The R script
+[The bayesm batch](#the-bayesm-batch): `scripts/run_all_experiments.py --samplers bayesm` ->
+`scripts/run_single_bayesm_experiment.py` -> `scripts/run_single_bayesm_experiment.R`. The R script
 loads the **same** scenario JSON the Liesel run used (so the samplers provably
 compare on identical data), reconstructs `lgtdata`, runs `rhierMnlRwMixture` once
 per chain (seed loop), and dumps the raw draws; the Python wrapper converts them
@@ -609,7 +612,7 @@ run multiple seed-based chains - which are **not** over-dispersed, so their R-ha
 a weaker test than the NUTS/HMC chains.
 
 **replication (Liesel)** is the same algorithm re-implemented in Python:
-`run_all_experiments.py --samplers bayesm_gibbs` runs
+`scripts/run_all_experiments.py --samplers bayesm_gibbs` runs
 `src/inference/bayesm_gibbs.py` on the augmented model
 (`src/bayesm_mixture_model.py`, explicit allocations `ind`), reproducing bayesm's
 sweep order, conjugate updates, fractional-likelihood Metropolis tuning,
@@ -630,9 +633,9 @@ NUTS, HMC (`src/standardmodel.py`) and bayesm (`rhierMnlRwMixture` with
 (`data/simulated/mixture/standard.json`, generated on first use):
 
 ```bash
-uv run python run_standard_experiment.py --sampler nuts
-uv run python run_standard_experiment.py --sampler hmc
-uv run python run_standard_experiment.py --sampler bayesm
+uv run python scripts/run_standard_experiment.py --sampler nuts
+uv run python scripts/run_standard_experiment.py --sampler hmc
+uv run python scripts/run_standard_experiment.py --sampler bayesm
 ```
 
 All three arms produce plain single-component keys (`mu`, `sigma_inv_chol_latent`,
@@ -640,8 +643,8 @@ All three arms produce plain single-component keys (`mu`, `sigma_inv_chol_latent
 distributed and executed with the shared tooling, pointed at this tree:
 
 ```bash
-uv run python distribute_notebooks.py --which standard_model_comparison --exp-root hbmnl_normal_experiments --force
-uv run python execute_analysis_notebooks.py --name model_comparison.ipynb --exp-root hbmnl_normal_experiments --force
+uv run python scripts/distribute_notebooks.py --which standard_model_comparison --exp-root hbmnl_normal_experiments --force
+uv run python scripts/execute_analysis_notebooks.py --name model_comparison.ipynb --exp-root hbmnl_normal_experiments --force
 ```
 
 ---
@@ -688,7 +691,7 @@ Open `hbmnl_mixture_experiments/experiment_configs.py` and add an entry to
 Then generate it:
 
 ```bash
-uv run python generate_data.py --scenario 2comp_unequal
+uv run python scripts/generate_data.py --scenario 2comp_unequal
 ```
 
 The batch runner picks up new scenarios automatically (it reads `SCENARIOS`).

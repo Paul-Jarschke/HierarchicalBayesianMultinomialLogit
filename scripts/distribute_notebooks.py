@@ -36,7 +36,7 @@ def find_targets(exp_root, level):
 
 
 def distribute(exp_root, key, template_name, output_name, level, name_override, force, dry_run):
-    template = PROJECT_ROOT / template_name
+    template = PROJECT_ROOT / "templates" / template_name
     if not template.exists():
         print(f"[{key}] SKIP: template not found: {template.relative_to(PROJECT_ROOT)}")
         return 0, 0

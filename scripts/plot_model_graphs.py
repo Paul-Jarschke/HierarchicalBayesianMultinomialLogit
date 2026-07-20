@@ -1,6 +1,14 @@
 """Plot the three Liesel model graphs (Graphviz `dot` layout) into model_graphs/."""
 
 import pathlib
+import sys
+
+PROJECT_ROOT = next(
+    p for p in [pathlib.Path(__file__).resolve(), *pathlib.Path(__file__).resolve().parents]
+    if (p / "pyproject.toml").exists()
+)
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
 import numpy as np
 import jax.numpy as jnp
@@ -29,7 +37,7 @@ MODELS = {
     "standard":  build_standard_hbmnl_model(DATA),             # one-component
 }
 
-outdir = pathlib.Path("model_graphs")
+outdir = PROJECT_ROOT / "model_graphs"
 outdir.mkdir(exist_ok=True)
 
 for name, model in MODELS.items():
