@@ -488,9 +488,11 @@ implemented exactly: identity init, per-unit modal pivot, per-draw linear
 assignment, stop when the agreement objective stops improving). **Only the
 mixture weights `pvec` are post-processed** - component means/covariances are
 not relabeled, since all other inference in the study uses label-invariant
-functionals. The notebook shows per-slot pvec R-hat/ESS and traces before vs
-after, classifies the outcome (permutation-fixed vs genuinely multimodal vs
-no-op), and saves `relabeled_pvec.pkl` additively. Allocations are
+functionals. The notebook shows only per-slot pvec R-hat/ESS and traces before
+vs after relabeling; the invariant-convergence gate, outcome classification and
+`relabeled_pvec.pkl` persistence are deliberately left out of the default
+notebook (still available as `analysis.invariant_convergence_summary`,
+`ls.classify_outcome` and manual pickling if needed). Allocations are
 reconstructed from the saved draws (`mu_k + Z@Delta`, `Sigma_k`, `pvec`,
 `beta_i`; Rossi Eq. 5.5.19), so the same notebook works for NUTS, HMC, bayesm
 and the replication. The logic lives in `src/label_switching.py`; the template
