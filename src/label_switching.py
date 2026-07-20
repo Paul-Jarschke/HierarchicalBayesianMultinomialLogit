@@ -192,7 +192,7 @@ def pvec_convergence_table(pvec, K, K_true=None, label=""):
     return df
 
 
-def plot_before_after_traces(before, after, K, title="", true_vals=None, ylim=None):
+def plot_before_after_traces(before, after, K, true_vals=None, ylim=None):
     """Weight traces for all K slots, raw (left) vs relabeled (right).
 
     before, after : (C, S, K) pvec arrays. true_vals: optional length-K_true
@@ -217,8 +217,8 @@ def plot_before_after_traces(before, after, K, title="", true_vals=None, ylim=No
         if ylim is not None:
             axes[k, 0].set_ylim(*ylim)
             axes[k, 1].set_ylim(*ylim)
-    axes[0, 0].set_title(f"{title}  -  BEFORE (raw, label-switched)")
-    axes[0, 1].set_title(f"{title}  -  AFTER (ECR relabeled)")
+    axes[0, 0].set_title("Before ECR")
+    axes[0, 1].set_title("After ECR")
     axes[K - 1, 0].set_xlabel("draw")
     axes[K - 1, 1].set_xlabel("draw")
     fig.tight_layout()
